@@ -3,8 +3,21 @@ import { render, fireEvent } from '@testing-library/svelte'
 import App from '../src/App.svelte'
 
 describe('App.svelte', () => {
+  let originalAnimate: typeof Element.prototype.animate | undefined
+
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+    // jsdom does not implement Element.animate (Web Animations API). Svelte transitions use it.
+    originalAnimate = Element.prototype.animate
+    Element.prototype.animate = function () {
+      return {
+        cancel: () => {},
+        finish: () => {},
+        get finished() {
+          return Promise.resolve()
+        },
+      } as unknown as Animation
+    }
     // Prevent tests from touching real localStorage or document font size between runs
     const store = new Map<string, string>()
     vi.stubGlobal('localStorage', {
@@ -25,6 +38,9 @@ describe('App.svelte', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    if (originalAnimate !== undefined) {
+      Element.prototype.animate = originalAnimate
+    }
   })
 
   it('renders header and create task button', () => {
