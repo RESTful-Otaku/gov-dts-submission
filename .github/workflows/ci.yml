@@ -122,7 +122,7 @@ jobs:
         working-directory: frontend/ios/App
         run: |
           xcodebuild -project App.xcodeproj -scheme App \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
   smoke-postgres:
