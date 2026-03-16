@@ -2,13 +2,20 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
-// Ensure Vitest uses the browser build of Svelte (not the server one),
-// otherwise Svelte 5's mount/onMount are unavailable and tests will fail.
+// Always force the browser build of Svelte, and use the classic
+// component API (mount / new App) rather than the server bundle.
 export default defineConfig(({ mode }) => ({
-  plugins: [svelte()],
+  plugins: [
+    svelte({
+      compilerOptions: {
+        // Be explicit that we want the classic component API.
+        runes: false,
+      },
+    }),
+  ],
   resolve: {
-    // In test mode, prefer the "browser" condition so Svelte's browser entry is used.
-    conditions: mode === 'test' ? ['browser'] : [],
+    // Always prefer the "browser" condition so Svelte's browser entry is used.
+    conditions: ['browser'],
   },
   test: {
     globals: true,
