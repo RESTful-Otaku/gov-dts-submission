@@ -1,5 +1,16 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
+  import { slide, fade } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
+
+  /** Create/edit modal: fade on web, slide from left on narrow (drawer). */
+  function modalContentTransition(
+    node: HTMLElement,
+    params: { isNarrow?: boolean }
+  ): ReturnType<typeof slide> | ReturnType<typeof fade> {
+    if (params.isNarrow) return slide(node, { duration: 260, easing: cubicOut, axis: 'x' })
+    return fade(node, { duration: 200 })
+  }
   import { flip } from 'svelte/animate'
   import { dndzone } from 'svelte-dnd-action'
   import SveltyPicker from 'svelty-picker'
@@ -51,9 +62,19 @@
   type ViewMode = 'cards' | 'list' | 'kanban'
   let viewMode: ViewMode = 'cards'
 
+  // Responsive layout: isNarrow = mobile; mobileSearchExpanded = search bar open on mobile
+  let isNarrow = false
+  let mobileSearchExpanded = false
+
   type SortKey = 'due' | 'title' | 'priority'
   let sortKey: SortKey = 'due'
   let sortAscending = true
+
+  /** List view (web only): page size and current page (1-based). */
+  const LIST_PAGE_SIZES = [10, 20, 30] as const
+  type ListPageSize = (typeof LIST_PAGE_SIZES)[number]
+  let listPageSize: ListPageSize = 20
+  let listPage = 1
 
   const PRIORITY_ORDER: Record<TaskPriority, number> = {
     urgent: 4,
@@ -253,13 +274,19 @@
     selectedTaskIds = next
   }
 
+  /** Select or deselect all tasks on the current page. */
   function selectAllInList() {
-    const listTasks = visibleTasks
+    const listTasks = listTasksDisplay
     if (selectedTaskIds.size === listTasks.length) {
       selectedTaskIds = new Set()
     } else {
       selectedTaskIds = new Set(listTasks.map((t) => t.id))
     }
+  }
+
+  /** Select all tasks in the list (all pages, current filters). */
+  function selectAllInListView() {
+    selectedTaskIds = new Set(visibleTasks.map((t) => t.id))
   }
 
   async function bulkSetStatus(newStatus: TaskStatus) {
@@ -290,6 +317,12 @@
         node.indeterminate = value
       },
     }
+  }
+
+  function handleResize() {
+    const width = window.innerWidth || document.documentElement.clientWidth || 0
+    isNarrow = width <= 640
+    if (!isNarrow) mobileSearchExpanded = false
   }
 
   let visibleTasks: Task[] = []
@@ -419,6 +452,11 @@
   $: dueTodayCount = tasks.filter((t) => dueState(t) === 'due-today').length
   $: dueThisWeekCount = tasks.filter((t) => dueState(t) === 'due-soon').length
 
+  // On small screens, always use the summary cards view.
+  $: if (isNarrow && viewMode !== 'cards') {
+    viewMode = 'cards'
+  }
+
   $: {
     if (searchDebounceId) {
       clearTimeout(searchDebounceId)
@@ -445,15 +483,38 @@
     sortAscending,
   )
 
-  $: listTaskCount =
+  /** In list view: full list on narrow, paginated slice on web. */
+  $: listTasksDisplay =
     viewMode === 'list'
-      ? visibleTasks.length
-      : 0
+      ? isNarrow
+        ? visibleTasks
+        : visibleTasks.slice(
+            (listPage - 1) * listPageSize,
+            listPage * listPageSize,
+          )
+      : []
+
+  $: totalListPages =
+    viewMode === 'list' && !isNarrow
+      ? Math.max(1, Math.ceil(visibleTasks.length / listPageSize))
+      : 1
+
+  $: if (viewMode === 'list' && !isNarrow && listPage > totalListPages) {
+    listPage = totalListPages
+  }
+
+  $: listTaskCount = viewMode === 'list' ? listTasksDisplay.length : 0
   $: isSelectAllIndeterminate =
     viewMode === 'list' &&
     listTaskCount > 0 &&
     selectedTaskIds.size > 0 &&
     selectedTaskIds.size < listTaskCount
+
+  /** In list view: true when every filtered task (all pages) is selected. */
+  $: allVisibleTasksSelected =
+    viewMode === 'list' &&
+    visibleTasks.length > 0 &&
+    selectedTaskIds.size === visibleTasks.length
 
   async function loadTasks() {
     loading = true
@@ -845,6 +906,7 @@
   }
 
   onMount(() => {
+    handleResize()
     const storedTheme = localStorage.getItem('task-theme') as Theme | null
     if (storedTheme === 'light' || storedTheme === 'dark') {
       theme = storedTheme
@@ -902,7 +964,7 @@
   })
 </script>
 
-<svelte:window on:keydown={handleGlobalKeydown} />
+<svelte:window on:keydown={handleGlobalKeydown} on:resize={handleResize} />
 
 <main class="app">
   <header class="app-header">
@@ -981,37 +1043,63 @@
     </div>
   </header>
 
-  <section class="card">
-    {#if healthStatus !== 'ok'}
-      <div
-        class="health-banner"
-        role="status"
-        aria-live="polite"
-      >
-        <span class="health-indicator health-indicator--{healthStatus}"></span>
-        <div class="health-text">
-          <strong>
-            {healthStatus === 'down'
-              ? 'The service is currently unavailable.'
-              : 'The service may be experiencing issues.'}
-          </strong>
-          {#if healthMessage}
-            <span class="health-message">{healthMessage}</span>
+  <div class="task-controls-wrap">
+    <div class="task-controls" aria-label="View, search, and sort tasks">
+      <div class="task-controls-left">
+        {#if isNarrow}
+          {#if !mobileSearchExpanded}
+            <button
+              type="button"
+              class="btn-create"
+              on:click|preventDefault|stopPropagation={openCreateModal}
+              aria-label="Create a new task"
+              title="Create a new task"
+            >
+              Create task
+            </button>
+            <button
+              type="button"
+              class="search-toggle-btn"
+              on:click|preventDefault|stopPropagation={() => {
+                mobileSearchExpanded = true
+                tick().then(() => searchInput?.focus())
+              }}
+              aria-label="Open search"
+              title="Search"
+            >
+              <span class="search-icon" aria-hidden="true"></span>
+            </button>
+            <button
+              type="button"
+              class="btn-filter"
+              on:click|preventDefault|stopPropagation={toggleFilters}
+              aria-expanded={showFilters}
+              aria-controls="advanced-filters"
+              aria-label="Toggle filters"
+              title="Show or hide filters"
+            >
+              <span class="filter-icon" aria-hidden="true"></span>
+            </button>
+          {:else}
+            <div
+              class="search-wrapper search-wrapper--expanded search-wrapper--fullwidth"
+              transition:slide={{ duration: 220, easing: cubicOut, axis: 'x' }}
+            >
+              <span class="search-icon" aria-hidden="true"></span>
+              <input
+                bind:this={searchInput}
+                type="search"
+                class="search-input"
+                placeholder="Search…"
+                bind:value={searchTerm}
+                title="Search by title, description, status, or date"
+                on:blur={() => {
+                  if (isNarrow && !searchTerm.trim()) mobileSearchExpanded = false
+                }}
+              />
+            </div>
           {/if}
-        </div>
-        <button type="button" class="health-refresh" on:click={refreshHealth}>
-          Retry
-        </button>
-      </div>
-    {/if}
-    <div class="card-header">
-      <div class="card-header-main">
-        {#if loading}
-          <span class="badge">Loading…</span>
-        {/if}
-      </div>
-      <div class="task-controls" aria-label="View, search, and sort tasks">
-        <div class="task-controls-left">
+        {:else}
           <button
             type="button"
             class="btn-create"
@@ -1058,8 +1146,10 @@
               title="Search by title, description, status, or date"
             />
           </div>
-        </div>
-        <div class="task-controls-right">
+        {/if}
+      </div>
+      <div class="task-controls-right">
+        {#if !isNarrow}
           <button
             type="button"
             class="btn-filter"
@@ -1071,7 +1161,39 @@
           >
             <span class="filter-icon" aria-hidden="true"></span>
           </button>
+        {/if}
+      </div>
+    </div>
+  </div>
+
+  <section class="card">
+    {#if healthStatus !== 'ok'}
+      <div
+        class="health-banner"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="health-indicator health-indicator--{healthStatus}"></span>
+        <div class="health-text">
+          <strong>
+            {healthStatus === 'down'
+              ? 'The service is currently unavailable.'
+              : 'The service may be experiencing issues.'}
+          </strong>
+          {#if healthMessage}
+            <span class="health-message">{healthMessage}</span>
+          {/if}
         </div>
+        <button type="button" class="health-refresh" on:click={refreshHealth}>
+          Retry
+        </button>
+      </div>
+    {/if}
+    <div class="card-header">
+      <div class="card-header-main">
+        {#if loading}
+          <span class="badge">Loading…</span>
+        {/if}
       </div>
     </div>
 
@@ -1081,6 +1203,7 @@
         class="filters-panel"
         role="region"
         aria-label="Advanced filters and sorting"
+        transition:slide={{ duration: 220, easing: cubicOut, axis: 'y' }}
       >
         <div class="filter-controls">
           <label>
@@ -1203,7 +1326,7 @@
       <p class="empty">No tasks yet. Click “Create task” to add one.</p>
     {:else}
       {#if viewMode === 'list'}
-        {@const listTasks = visibleTasks}
+        {@const listTasks = listTasksDisplay}
         <div class="list-wrapper" role="region" aria-label="Tasks in list view">
           <form class="quick-add-row" on:submit|preventDefault={handleQuickAdd} aria-label="Quick add task">
             <input
@@ -1260,6 +1383,26 @@
               </div>
             </div>
           {/if}
+          {#if !isNarrow && visibleTasks.length > listTasksDisplay.length}
+            <div class="list-select-all-bar" role="status">
+              {#if allVisibleTasksSelected}
+                <span class="list-select-all-text">All {visibleTasks.length} tasks selected.</span>
+                <button type="button" class="list-select-all-link" on:click={clearListSelection}>
+                  Clear selection
+                </button>
+              {:else}
+                <span class="list-select-all-text">{visibleTasks.length} tasks in list.</span>
+                <button
+                  type="button"
+                  class="list-select-all-link"
+                  on:click={selectAllInListView}
+                  aria-label="Select all {visibleTasks.length} tasks in list"
+                >
+                  Select all {visibleTasks.length} tasks in list
+                </button>
+              {/if}
+            </div>
+          {/if}
           <table class="task-table">
             <thead>
               <tr>
@@ -1267,7 +1410,9 @@
                   <label class="select-all-label">
                     <input
                       type="checkbox"
-                      aria-label="Select all tasks in list"
+                      aria-label={!isNarrow && visibleTasks.length > listTasksDisplay.length
+                        ? 'Select all on this page'
+                        : 'Select all tasks in list'}
                       checked={listTasks.length > 0 && selectedTaskIds.size === listTasks.length}
                       use:setIndeterminate={isSelectAllIndeterminate}
                       on:change={selectAllInList}
@@ -1351,6 +1496,57 @@
               {/if}
             </tbody>
           </table>
+          {#if !isNarrow && visibleTasks.length > 0}
+            <nav class="list-pagination" aria-label="List pagination">
+              <div class="list-pagination-info">
+                Showing {(listPage - 1) * listPageSize + 1}–{Math.min(listPage * listPageSize, visibleTasks.length)} of {visibleTasks.length}
+              </div>
+              <div class="list-pagination-controls">
+                <button
+                  type="button"
+                  class="pagination-btn"
+                  disabled={listPage <= 1}
+                  aria-label="Previous page"
+                  on:click={() => (listPage = Math.max(1, listPage - 1))}
+                >
+                  Previous
+                </button>
+                <span class="pagination-page" aria-current="page">
+                  Page {listPage} of {totalListPages}
+                </span>
+                <button
+                  type="button"
+                  class="pagination-btn"
+                  disabled={listPage >= totalListPages}
+                  aria-label="Next page"
+                  on:click={() => (listPage = Math.min(totalListPages, listPage + 1))}
+                >
+                  Next
+                </button>
+              </div>
+              <div class="list-pagination-size">
+                <label for="list-page-size">
+                  <span class="control-label">Per page</span>
+                </label>
+                <select
+                  id="list-page-size"
+                  value={listPageSize}
+                  aria-label="Tasks per page"
+                  on:change={(e) => {
+                    const v = Number((e.currentTarget as HTMLSelectElement).value)
+                    if (LIST_PAGE_SIZES.includes(v as ListPageSize)) {
+                      listPageSize = v as ListPageSize
+                      listPage = 1
+                    }
+                  }}
+                >
+                  {#each LIST_PAGE_SIZES as size}
+                    <option value={size}>{size}</option>
+                  {/each}
+                </select>
+              </div>
+            </nav>
+          {/if}
         </div>
       {:else if viewMode === 'kanban'}
         <div class="kanban" role="region" aria-label="Tasks in kanban view">
@@ -1523,17 +1719,21 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       class="modal-backdrop"
+      class:modal-backdrop--drawer={isNarrow}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
       tabindex="-1"
       on:click={handleModalBackdropClick}
       on:keydown={(e) => e.key === 'Escape' && closeCreateModal()}
+      transition:fade={{ duration: 200 }}
     >
       <div
         class="modal"
+        class:modal--drawer={isNarrow}
         role="document"
         on:keydown={(e) => e.key === 'Escape' && closeCreateModal()}
+        transition:modalContentTransition={{ isNarrow }}
       >
         <div class="modal-header">
           <h2 id="modal-title">Create a new task</h2>
@@ -1642,17 +1842,21 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       class="modal-backdrop"
+      class:modal-backdrop--drawer={isNarrow}
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-modal-title"
       tabindex="-1"
       on:click={handleModalBackdropClick}
       on:keydown={(e) => e.key === 'Escape' && closeEditModal()}
+      transition:fade={{ duration: 200 }}
     >
       <div
         class="modal"
+        class:modal--drawer={isNarrow}
         role="document"
         on:keydown={(e) => e.key === 'Escape' && closeEditModal()}
+        transition:modalContentTransition={{ isNarrow }}
       >
         <div class="modal-header">
           <h2 id="edit-modal-title">Edit task</h2>
@@ -1737,11 +1941,13 @@
       tabindex="-1"
       on:click={handleModalBackdropClick}
       on:keydown={(e) => e.key === 'Escape' && closeDeleteModal()}
+      transition:fade={{ duration: 200 }}
     >
       <div
         class="modal modal--delete"
         role="document"
         on:keydown={(e) => e.key === 'Escape' && closeDeleteModal()}
+        transition:fade={{ duration: 200 }}
       >
         <div class="modal-header">
           <h2 id="delete-modal-title">
