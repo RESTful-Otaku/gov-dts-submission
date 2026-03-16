@@ -282,3 +282,40 @@ jobs:
         run: |
           go test ./tests/storage -run 'TestMongoStore_'
 
+  smoke-sqlite:
+    name: Smoke test (SQLite)
+    runs-on: ubuntu-latest
+    needs: [backend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite (CGO)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build API
+        working-directory: backend
+        run: go build -o api ./cmd/api
+
+      - name: Run API (SQLite)
+        working-directory: backend
+        env:
+          DB_DRIVER: sqlite3
+          DB_DSN: file:tasks_ci.db?_foreign_keys=on&_busy_timeout=5000&cache=shared
+          HTTP_PORT: "8080"
+        run: |
+          ./api &
+          sleep 2
+          curl -sf http://localhost:8080/api/ready
+          curl -sf http://localhost:8080/api/tasks | head -c 200
+
+      - name: Run SQLite store tests
+        working-directory: backend
+        run: |
+          go test ./tests/storage -run 'TestSQLiteStore'
+
