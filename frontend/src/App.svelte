@@ -2,9 +2,16 @@
   import { onMount, tick } from 'svelte'
   import { flip } from 'svelte/animate'
   import { dndzone } from 'svelte-dnd-action'
+  import SveltyPicker from 'svelty-picker'
+  import { en as pickerEn } from 'svelty-picker/i18n'
   import govLogo from '../assets/gov_uk.webp'
   import type { Task, TaskPriority, TaskStatus } from './lib/api'
   import { ApiError, createTask, deleteTask, healthReady, listTasks, updateTask, updateTaskStatus } from './lib/api'
+
+  /** UK locale: week starts Monday; date/time picker format dd-mm-yyyy HH:ii AM/PM */
+  const PICKER_I18N = { ...pickerEn, weekStart: 1 }
+  const DATETIME_FORMAT = 'dd-mm-yyyy HH:ii P'
+  const DATE_FORMAT = 'dd-mm-yyyy'
 
   let tasks: Task[] = []
   let loading = false
@@ -93,13 +100,13 @@
   let priority: TaskPriority = 'normal'
   let owner = ''
   let tagsInput = ''
-  let dueDate = ''
-  let dueTime = ''
+  /** Create modal: due date+time in picker format (dd-mm-yyyy HH:ii P) */
+  let dueDateTimeStr = ''
   let modalFirstInput: HTMLInputElement | null = null
   let searchInput: HTMLInputElement | null = null
   let quickAddTitle = ''
-  let quickAddDueDate = ''
-  let quickAddDueTime = ''
+  /** Quick-add row: due date+time in picker format (dd-mm-yyyy HH:ii P) */
+  let quickAddDateTimeStr = ''
   let quickAddSubmitting = false
 
   const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
@@ -130,15 +137,48 @@
     priority = 'normal'
     owner = ''
     tagsInput = ''
-    dueDate = ''
-    dueTime = ''
+    dueDateTimeStr = ''
+  }
+
+  function formatUKDateString(d: Date): string {
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}-${month}-${year}`
+  }
+
+  /** Value for SveltyPicker datetime in UK format: dd-mm-yyyy HH:ii P */
+  function toDateTimePickerValue(d: Date): string {
+    const datePart = formatUKDateString(d)
+    let hours = d.getHours()
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    const period: 'AM' | 'PM' = hours >= 12 ? 'PM' : 'AM'
+    hours = hours % 12
+    if (hours === 0) hours = 12
+    const hh = String(hours).padStart(2, '0')
+    return `${datePart} ${hh}:${minutes} ${period}`
+  }
+
+  /** Parse SveltyPicker datetime string (dd-mm-yyyy HH:ii P) to ISO string, or null if invalid. */
+  function parseDateTimeUK(s: string): string | null {
+    const trimmed = s?.trim()
+    if (!trimmed) return null
+    const parts = trimmed.split(/\s+/)
+    if (parts.length < 3) return null
+    const datePart = parts[0]
+    const timePart = parts[1]
+    const periodPart = (parts[2]?.toUpperCase() === 'PM' ? 'PM' : 'AM') as 'AM' | 'PM'
+    const d = parseUKDate(datePart)
+    const t = parse12HourTime(timePart, periodPart)
+    if (!d || !t) return null
+    const due = new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.hours, t.minutes, 0, 0)
+    return Number.isNaN(due.getTime()) ? null : due.toISOString()
   }
 
   function openCreateModal() {
     resetForm()
     const now = new Date()
-    dueDate = now.toISOString().slice(0, 10)
-    dueTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    dueDateTimeStr = toDateTimePickerValue(now)
     priority = 'normal'
     createModalOpen = true
     tick().then(() => modalFirstInput?.focus())
@@ -301,18 +341,24 @@
         return false
     }
 
-    if (from || to) {
+    const fromStr = from ?? ''
+    const toStr = to ?? ''
+    if (fromStr || toStr) {
       const due = new Date(taskItem.dueAt)
       if (Number.isNaN(due.getTime())) {
         return false
       }
 
-      if (from) {
-        const fromDate = new Date(`${from}T00:00:00`)
+      if (fromStr) {
+        const fromDateObj = parseUKDate(fromStr)
+        if (!fromDateObj) return false
+        const fromDate = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), fromDateObj.getDate())
         if (due < fromDate) return false
       }
-      if (to) {
-        const toDate = new Date(`${to}T23:59:59.999`)
+      if (toStr) {
+        const toDateObj = parseUKDate(toStr)
+        if (!toDateObj) return false
+        const toDate = new Date(toDateObj.getFullYear(), toDateObj.getMonth(), toDateObj.getDate(), 23, 59, 59, 999)
         if (due > toDate) return false
       }
     }
@@ -479,8 +525,8 @@
     localStorage.setItem('task-owner-filter', ownerFilter)
     localStorage.setItem('task-tag-filter', tagFilter)
     localStorage.setItem('task-search-term', searchTerm)
-    localStorage.setItem('task-filter-from', filterFrom)
-    localStorage.setItem('task-filter-to', filterTo)
+    localStorage.setItem('task-filter-from', filterFrom ?? '')
+    localStorage.setItem('task-filter-to', filterTo ?? '')
     localStorage.setItem('task-show-filters', String(showFilters))
   }
 
@@ -535,27 +581,71 @@
     }
   }
 
+  function parseUKDate(dateStr: string): Date | null {
+    const trimmed = dateStr.trim()
+    if (!trimmed) return null
+    // Accept strictly DD-MM-YYYY to avoid US-style ambiguity.
+    const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(trimmed)
+    if (!match) return null
+    const [, dd, mm, yyyy] = match
+    const day = Number(dd)
+    const month = Number(mm)
+    const year = Number(yyyy)
+    const d = new Date(year, month - 1, day)
+    if (Number.isNaN(d.getTime()) || d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) {
+      return null
+    }
+    return d
+  }
+
+  /** Parses a date string from either a native date input (YYYY-MM-DD) or UK text (DD-MM-YYYY). */
+  function parseDateInput(dateStr: string): Date | null {
+    const trimmed = dateStr.trim()
+    if (!trimmed) return null
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const d = new Date(trimmed + 'T12:00:00')
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+    return parseUKDate(trimmed)
+  }
+
+  /** Returns DD-MM-YYYY for display in any date field (e.g. from localStorage). */
+  function toDisplayDate(dateStr: string): string {
+    const d = parseDateInput(dateStr)
+    return d ? formatUKDateString(d) : ''
+  }
+
+  function parse12HourTime(timeStr: string, period: 'AM' | 'PM'): { hours: number; minutes: number } | null {
+    const trimmed = timeStr.trim()
+    if (!trimmed) return null
+    const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
+    if (!match) return null
+    let hours = Number(match[1])
+    const minutes = Number(match[2])
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null
+    if (period === 'PM' && hours < 12) hours += 12
+    if (period === 'AM' && hours === 12) hours = 0
+    return { hours, minutes }
+  }
+
   function getDueAtISO(): string | null {
-    if (!dueDate || !dueTime) return null
-    const due = new Date(`${dueDate}T${dueTime}:00`)
-    if (Number.isNaN(due.getTime())) return null
-    return due.toISOString()
+    if (!dueDateTimeStr?.trim()) return null
+    return parseDateTimeUK(dueDateTimeStr)
   }
 
   function validateForm(): string | null {
     if (!title.trim()) return 'Title is required'
-    if (!dueDate || !dueTime) return 'Due date and time are required'
+    if (!dueDateTimeStr?.trim()) return 'Due date and time are required'
     const iso = getDueAtISO()
-    if (!iso) return 'Due date/time is invalid'
+    if (!iso) return 'Due date/time is invalid (use DD-MM-YYYY and 12-hour time)'
     if (new Date(iso).getTime() < Date.now()) return 'Due date/time must be in the future'
     return null
   }
 
   function getQuickAddDueISO(): string | null {
-    if (!quickAddDueDate || !quickAddDueTime) return null
-    const due = new Date(`${quickAddDueDate}T${quickAddDueTime}:00`)
-    if (Number.isNaN(due.getTime())) return null
-    return due.toISOString()
+    if (!quickAddDateTimeStr?.trim()) return null
+    return parseDateTimeUK(quickAddDateTimeStr)
   }
 
   async function handleQuickAdd(event: SubmitEvent) {
@@ -567,7 +657,7 @@
     }
     const dueAtISO = getQuickAddDueISO()
     if (!dueAtISO) {
-      showToast('Enter a valid due date and time.', 'warning')
+      showToast('Enter a valid due date and time using the picker.', 'warning')
       return
     }
     if (new Date(dueAtISO).getTime() < Date.now()) {
@@ -584,8 +674,7 @@
       })
       tasks = [...tasks, created].sort((a, b) => a.dueAt.localeCompare(b.dueAt))
       quickAddTitle = ''
-      quickAddDueDate = ''
-      quickAddDueTime = ''
+      quickAddDateTimeStr = ''
       showToast('Task created.', 'notification')
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Failed to create task', 'error')
@@ -675,14 +764,17 @@
   function formatDate(value: string): string {
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) return value
-    return d.toLocaleString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    let hours = d.getHours()
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    const period = hours >= 12 ? 'PM' : 'AM'
+    hours = hours % 12
+    if (hours === 0) hours = 12
+    const hh = String(hours).padStart(2, '0')
+    // Display as DD-MM-YYYY hh:mm AM/PM
+    return `${day}-${month}-${year} ${hh}:${minutes} ${period}`
   }
 
   const KANBAN_COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -731,10 +823,8 @@
     selectedTaskIds = new Set()
   }
 
-  $: if (viewMode === 'list' && !quickAddDueDate && !quickAddDueTime) {
-    const now = new Date()
-    quickAddDueDate = now.toISOString().slice(0, 10)
-    quickAddDueTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  $: if (viewMode === 'list' && !quickAddDateTimeStr?.trim()) {
+    quickAddDateTimeStr = toDateTimePickerValue(new Date())
   }
 
   async function refreshHealth() {
@@ -790,11 +880,11 @@
     }
     const storedFrom = localStorage.getItem('task-filter-from')
     if (typeof storedFrom === 'string') {
-      filterFrom = storedFrom
+      filterFrom = toDisplayDate(storedFrom) || storedFrom
     }
     const storedTo = localStorage.getItem('task-filter-to')
     if (typeof storedTo === 'string') {
-      filterTo = storedTo
+      filterTo = toDisplayDate(storedTo) || storedTo
     }
     const storedShowFilters = localStorage.getItem('task-show-filters')
     if (storedShowFilters === 'true' || storedShowFilters === 'false') {
@@ -1029,11 +1119,35 @@
           <div class="date-range">
             <label>
               <span class="control-label">Due from</span>
-              <input type="date" bind:value={filterFrom} />
+              <SveltyPicker
+                mode="date"
+                format={DATE_FORMAT}
+                formatType="standard"
+                bind:value={filterFrom}
+                placeholder="DD-MM-YYYY"
+                i18n={PICKER_I18N}
+                weekStart={1}
+                todayBtn
+                clearBtn
+                manualInput
+                inputClasses="filter-due-input"
+              />
             </label>
             <label>
               <span class="control-label">Due to</span>
-              <input type="date" bind:value={filterTo} />
+              <SveltyPicker
+                mode="date"
+                format={DATE_FORMAT}
+                formatType="standard"
+                bind:value={filterTo}
+                placeholder="DD-MM-YYYY"
+                i18n={PICKER_I18N}
+                weekStart={1}
+                todayBtn
+                clearBtn
+                manualInput
+                inputClasses="filter-due-input"
+              />
             </label>
           </div>
 
@@ -1097,18 +1211,21 @@
               bind:value={quickAddTitle}
               aria-label="Task title"
             />
-            <input
-              type="date"
-              class="quick-add-due-date"
-              bind:value={quickAddDueDate}
-              aria-label="Due date"
-            />
-            <input
-              type="time"
-              class="quick-add-due-time"
-              bind:value={quickAddDueTime}
-              aria-label="Due time"
-            />
+            <div class="quick-add-picker-wrap">
+              <SveltyPicker
+                mode="datetime"
+                format={DATETIME_FORMAT}
+                formatType="standard"
+                bind:value={quickAddDateTimeStr}
+                placeholder="DD-MM-YYYY HH:MM AM/PM"
+                i18n={PICKER_I18N}
+                weekStart={1}
+                todayBtn
+                clearBtn
+                manualInput
+                inputClasses="quick-add-due-input"
+              />
+            </div>
             <button type="submit" class="btn-quick-add" disabled={quickAddSubmitting}>
               {quickAddSubmitting ? 'Adding…' : 'Add'}
             </button>
@@ -1481,21 +1598,21 @@
 
           <div class="field-group">
             <div class="field">
-              <label for="modal-due-date">Due date (DD/MM/YYYY)<span class="required">*</span></label>
-              <input
-                id="modal-due-date"
-                type="date"
-                bind:value={dueDate}
+              <label for="modal-due-datetime">Due date and time (DD-MM-YYYY, 12-hour)<span class="required">*</span></label>
+              <SveltyPicker
+                inputId="modal-due-datetime"
+                mode="datetime"
+                format={DATETIME_FORMAT}
+                formatType="standard"
+                bind:value={dueDateTimeStr}
+                placeholder="DD-MM-YYYY HH:MM AM/PM"
                 required
-              />
-            </div>
-            <div class="field">
-              <label for="modal-due-time">Due time (24-hour)<span class="required">*</span></label>
-              <input
-                id="modal-due-time"
-                type="time"
-                bind:value={dueTime}
-                required
+                i18n={PICKER_I18N}
+                weekStart={1}
+                todayBtn
+                clearBtn
+                manualInput
+                inputClasses="modal-due-input"
               />
             </div>
           </div>

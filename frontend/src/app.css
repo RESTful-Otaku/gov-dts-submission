@@ -370,6 +370,100 @@ a {
   gap: 0.5rem;
 }
 
+/* Svelty-picker theme: match modals and app colours, fonts, and button styles */
+:root {
+  --sdt-bg-main: var(--color-surface);
+  --sdt-color: var(--color-text);
+  --sdt-wrap-shadow: 0 4px 12px rgba(11, 12, 12, 0.12);
+  --sdt-shadow-color: var(--color-border);
+  --sdt-radius: 0.5rem;
+  --sdt-bg-selected: var(--color-accent);
+  --sdt-today-color: #ffffff;
+  --sdt-today-bg: var(--color-accent);
+  --sdt-clear-color: var(--color-danger);
+  --sdt-clear-bg: transparent;
+  --sdt-clear-hover-bg: var(--color-danger);
+  --sdt-clear-hover-color: #ffffff;
+  --sdt-header-color: var(--color-text);
+  --sdt-header-btn-bg-hover: var(--color-bg-subtle);
+  --sdt-table-bg: transparent;
+  --sdt-table-data-bg-hover: var(--color-bg-subtle);
+  --sdt-table-selected-bg: var(--color-accent);
+  --sdt-color-selected: #ffffff;
+  --sdt-table-today-indicator: var(--color-accent);
+  --sdt-table-disabled-date: var(--color-muted);
+  --sdt-table-disabled-date-bg: var(--color-bg-subtle);
+  --sdt-clock-bg: var(--color-bg-subtle);
+  --sdt-clock-selected-bg: var(--color-accent);
+  --sdt-clock-time-bg: transparent;
+  --sdt-clock-color: var(--color-text);
+  --sdt-clock-time-bg-hover: var(--color-bg-subtle);
+  --sdt-clock-color-hover: var(--color-text);
+  --sdt-clock-disabled: var(--color-muted);
+  --sdt-clock-disabled-bg: var(--color-bg-subtle);
+}
+
+[data-theme='dark'] {
+  --sdt-wrap-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* Picker popup and buttons: same font and button shape as app */
+:global(.sdt-calendar-wrap) {
+  font-family: inherit;
+  padding: 0.75rem;
+}
+
+:global(.sdt-input-wrap) {
+  border: none !important;
+}
+
+:global(.sdt-action-btn),
+:global(.sdt-today-btn),
+:global(.sdt-clear-btn) {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.55rem 1rem;
+  border-radius: 0.25rem;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+:global(.sdt-today-btn:hover:not([disabled])),
+:global(.sdt-today-btn:focus),
+:global(.sdt-today-btn:active) {
+  background-color: var(--color-hover) !important;
+  color: #ffffff !important;
+}
+
+:global(.sdt-clear-btn:hover:not([disabled])),
+:global(.sdt-clear-btn:focus),
+:global(.sdt-clear-btn:active:not([disabled])) {
+  background-color: var(--color-danger) !important;
+  color: #ffffff !important;
+}
+
+:global(.sdt-thead-nav .std-btn),
+:global(.sdt-time-btn),
+:global(.std-btn) {
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+:global(.std-btn:hover:not([disabled])) {
+  background-color: var(--color-bg-subtle) !important;
+}
+
+:global(.is-selected .std-btn),
+:global(.is-selected.in-range .std-btn) {
+  background-color: var(--color-accent) !important;
+  color: #ffffff !important;
+}
+
+:global(.sdt-time-head),
+:global(.sdt-time-figure) {
+  color: var(--color-text);
+}
+
 .filters-panel {
   margin-top: 0.75rem;
   padding: 0.75rem 1.25rem 1rem;
@@ -971,9 +1065,32 @@ button.tag-chip:hover {
   min-width: 160px;
 }
 
-.quick-add-due-date,
-.quick-add-due-time {
-  width: auto;
+.quick-add-picker-wrap {
+  min-width: 180px;
+}
+
+/* Picker text inputs: match app form inputs (border, background, focus) */
+.quick-add-due-input,
+.filter-due-input,
+.modal-due-input {
+  min-width: 140px;
+  padding: 0.55rem 0.7rem;
+  font-size: inherit;
+  font-family: inherit;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  border-radius: 0.25rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.quick-add-due-input:focus,
+.filter-due-input:focus,
+.modal-due-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(29, 112, 184, 0.25);
+  background-color: var(--color-surface);
 }
 
 .btn-quick-add {

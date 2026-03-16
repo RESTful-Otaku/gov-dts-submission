@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,9 +17,11 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@testing-library/svelte": "^5.3.1",
     "@tsconfig/svelte": "^5.0.6",
     "@types/node": "^24.10.1",
     "@vitest/coverage-v8": "^4.1.0",
+    "jsdom": "^29.0.0",
     "svelte": "^5.45.2",
     "svelte-check": "^4.3.4",
     "svelte-dnd-action": "^0.9.69",
@@ -31,7 +33,7 @@
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
-    "@capacitor/ios": "^8.2.0"
+    "@capacitor/ios": "^8.2.0",
+    "svelty-picker": "^6.1.6"
   }
 }
-

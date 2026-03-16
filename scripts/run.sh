@@ -12,6 +12,7 @@ source "$SCRIPT_DIR/lib.sh"
 API_PID=""
 POSTGRES_LOCAL_STARTED=0
 MARIADB_LOCAL_STARTED=0
+MONGO_LOCAL_STARTED=0
 
 cleanup_all() {
   if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
@@ -30,8 +31,15 @@ cleanup_all() {
   # Stop locally-started MariaDB container (used for Run → MariaDB → Local)
   if (( MARIADB_LOCAL_STARTED == 1 )); then
     info "Stopping MariaDB container..."
-    (cd "$ROOT" && docker compose --profile mariadb down mariadb) 2>/dev/null || \
+      (cd "$ROOT" && docker compose --profile mariadb down mariadb) 2>/dev/null || \
       (cd "$ROOT" && docker compose --profile mariadb stop mariadb) 2>/dev/null || true
+  fi
+
+  # Stop locally-started MongoDB container (used for Run → MongoDB → Local)
+  if (( MONGO_LOCAL_STARTED == 1 )); then
+    info "Stopping MongoDB container..."
+    (cd "$ROOT" && docker compose --profile mongo down mongo) 2>/dev/null || \
+      (cd "$ROOT" && docker compose --profile mongo stop mongo) 2>/dev/null || true
   fi
 }
 
@@ -101,6 +109,28 @@ ensure_mariadb() {
   info "MariaDB container started — API will connect when ready"
 }
 
+ensure_mongo() {
+  print_section "🍃 MongoDB: starting (Docker)"
+  start_spinner "Starting MongoDB container..."
+  (cd "$ROOT" && docker compose -f docker-compose.yml -f docker-compose.mongodb.yml --profile mongo up -d mongo) 2>/dev/null
+  stop_spinner
+  start_spinner "Waiting for MongoDB on 127.0.0.1:27017..."
+  local i=0
+  while (( i < 60 )); do
+    if (cd "$ROOT" && docker compose --profile mongo exec -T mongo mongosh --eval "db.adminCommand('ping')" >/dev/null 2>&1); then
+      stop_spinner
+      ok "MongoDB is ready"
+      sleep 2
+      return 0
+    fi
+    sleep 1
+    (( i++ )) || true
+  done
+  stop_spinner
+  fail "MongoDB did not become ready in time"
+  return 1
+}
+
 run_local() {
   local db="$1"
   if [[ "$db" == "Postgres" ]]; then
@@ -113,13 +143,22 @@ run_local() {
     ensure_mariadb || exit 1
     export DB_DRIVER=mariadb
     export DB_DSN="${DB_DSN:-root:password@tcp(127.0.0.1:3306)/tasks?parseTime=true&charset=utf8mb4&loc=UTC&timeout=10s&readTimeout=5s&writeTimeout=5s}"
+  elif [[ "$db" == "MongoDB" ]]; then
+    MONGO_LOCAL_STARTED=1
+    ensure_mongo || exit 1
+    export MONGO_URI="${MONGO_URI:-mongodb://127.0.0.1:27017}"
+    export MONGO_DATABASE="${MONGO_DATABASE:-tasks}"
   else
     export DB_DRIVER=sqlite3
     unset DB_DSN
   fi
 
   print_section "🚀 Backend: starting API (DB=$db)"
-  (cd "$BACKEND" && go run ./cmd/api) &
+  if [[ "$db" == "MongoDB" ]]; then
+    (cd "$BACKEND" && go run ./cmd/api-mongo) &
+  else
+    (cd "$BACKEND" && go run ./cmd/api) &
+  fi
   API_PID=$!
   cleanup() {
     kill "$API_PID" 2>/dev/null || true
@@ -147,6 +186,9 @@ run_docker() {
   elif [[ "$db" == "MariaDB" ]]; then
     print_section "🐳 Docker: API + Frontend + MariaDB"
     (cd "$ROOT" && docker compose -f docker-compose.yml -f docker-compose.mariadb.yml --profile mariadb up --build)
+  elif [[ "$db" == "MongoDB" ]]; then
+    print_section "🐳 Docker: API + Frontend + MongoDB"
+    (cd "$ROOT" && docker compose -f docker-compose.yml -f docker-compose.mongodb.yml --profile mongo up --build)
   else
     print_section "🐳 Docker: API + Frontend (SQLite)"
     (cd "$ROOT" && docker compose up --build)
@@ -191,12 +233,13 @@ main() {
       ok "All tests passed!"
       ;;
     2)
-      DB=$(menu 1 "Which database?" "SQLite" "Postgres" "MariaDB")
+      DB=$(menu 1 "Which database?" "SQLite" "Postgres" "MariaDB" "MongoDB")
       MODE=$(menu 1 "Run where?" "Local (API + frontend on this machine)" "Docker (compose)")
       case "$DB" in
         1) run_db="SQLite" ;;
         2) run_db="Postgres" ;;
         3) run_db="MariaDB" ;;
+        4) run_db="MongoDB" ;;
       esac
       case "$MODE" in
         1) run_local "$run_db" ;;
@@ -204,11 +247,12 @@ main() {
       esac
       ;;
     3)
-      DB=$(menu 1 "Which database for Docker build?" "SQLite" "Postgres" "MariaDB")
+      DB=$(menu 1 "Which database for Docker build?" "SQLite" "Postgres" "MariaDB" "MongoDB")
       case "$DB" in
         1) build_db="SQLite" ;;
         2) build_db="Postgres" ;;
         3) build_db="MariaDB" ;;
+        4) build_db="MongoDB" ;;
       esac
       run_build_docker "$build_db"
       ;;

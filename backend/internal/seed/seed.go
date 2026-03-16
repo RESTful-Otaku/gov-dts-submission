@@ -13,13 +13,23 @@ import (
 
 // DemoTasks inserts demo tasks if the store is empty.
 func DemoTasks(ctx context.Context, db *sql.DB) error {
-	store := storage.NewStoreFromDB(db)
+	return DemoTasksStore(ctx, storage.NewStoreFromDB(db))
+}
+
+// DemoTasksStore inserts demo tasks if the given store is empty.
+// This enables seeding for non-SQL backends (e.g. MongoDB) while sharing the
+// same demo dataset.
+func DemoTasksStore(ctx context.Context, store storage.Store) error {
 	existing, err := store.ListTasks(ctx)
 	if err != nil {
 		return err
 	}
-	if len(existing) > 0 {
-		return nil
+	existingTitles := make(map[string]struct{}, len(existing))
+	for _, t := range existing {
+		if t == nil {
+			continue
+		}
+		existingTitles[t.Title] = struct{}{}
 	}
 
 	now := time.Now().UTC()
@@ -77,7 +87,11 @@ func DemoTasks(ctx context.Context, db *sql.DB) error {
 	rnd := rand.New(rand.NewSource(now.UnixNano()))
 	rnd.Shuffle(len(templates), func(i, j int) { templates[i], templates[j] = templates[j], templates[i] })
 
+	seeded := 0
 	for _, tmpl := range templates {
+		if _, ok := existingTitles[tmpl.Title]; ok {
+			continue
+		}
 		dueAt := now.AddDate(0, 0, tmpl.DueDays)
 		dueAt = time.Date(dueAt.Year(), dueAt.Month(), dueAt.Day(), 9, 0, 0, 0, time.UTC)
 		for !dueAt.After(now) {
@@ -99,8 +113,11 @@ func DemoTasks(ctx context.Context, db *sql.DB) error {
 		if _, err := store.CreateTask(ctx, in); err != nil {
 			return err
 		}
+		seeded++
 	}
-	logger.Info("seeded %d demo tasks", len(templates))
+	if seeded > 0 {
+		logger.Info("seeded %d demo tasks", seeded)
+	}
 	return nil
 }
 

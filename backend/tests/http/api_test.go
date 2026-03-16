@@ -1,4 +1,4 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	httpapi "github.com/j-m-harrison/dts-submission/internal/http"
 	"github.com/j-m-harrison/dts-submission/internal/storage"
 )
 
@@ -23,7 +24,7 @@ func newTestServer(t *testing.T) *http.ServeMux {
 	if err := storage.Migrate(context.Background(), db); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	s := NewServer(db)
+	s := httpapi.NewServer(db)
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 	return mux

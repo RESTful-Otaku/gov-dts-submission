@@ -28,10 +28,42 @@ import (
 type Server struct {
 	store storage.Store
 	db    *sql.DB
+	// dbPing is an optional callback used by the readiness endpoint. For
+	// SQL-backed stores this wraps (*sql.DB).PingContext; for Mongo-backed
+	// stores it can wrap a mongo.Client.Ping call.
+	dbPing func(ctx context.Context) error
 }
 
+// NewServer constructs a Server backed by an SQL database. It preserves the
+// existing behaviour of using a concrete *sql.DB for migrations, seeding, and
+// readiness checks.
 func NewServer(db *sql.DB) *Server {
-	return &Server{store: storage.NewStoreFromDB(db), db: db}
+	return &Server{
+		store: storage.NewStoreFromDB(db),
+		db:    db,
+		dbPing: func(ctx context.Context) error {
+			if db == nil {
+				return errors.New("nil db")
+			}
+			return db.PingContext(ctx)
+		},
+	}
+}
+
+// NewServerWithStore constructs a Server from an arbitrary Store implementation
+// and an optional readiness check function. This enables MongoDB-backed
+// deployments without coupling the HTTP layer directly to Mongo driver types.
+func NewServerWithStore(store storage.Store, ping func(ctx context.Context) error) *Server {
+	return &Server{
+		store: store,
+		db:    nil,
+		dbPing: func(ctx context.Context) error {
+			if ping == nil {
+				return nil
+			}
+			return ping(ctx)
+		},
+	}
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
@@ -157,16 +189,15 @@ func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
 
 // handleReady returns 200 if the app can serve traffic (e.g. DB reachable).
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
-	if s.db == nil {
-		writeError(w, http.StatusServiceUnavailable, "database not configured")
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	if err := s.db.PingContext(ctx); err != nil {
-		logger.Error("ready check: db ping failed: %v", err)
-		writeError(w, http.StatusServiceUnavailable, "database unavailable")
-		return
+
+	if s.dbPing != nil {
+		if err := s.dbPing(ctx); err != nil {
+			logger.Error("ready check: db ping failed: %v", err)
+			writeError(w, http.StatusServiceUnavailable, "database unavailable")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }

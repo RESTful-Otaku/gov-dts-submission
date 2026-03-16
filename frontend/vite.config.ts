@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [svelte()],
   test: {
     globals: true,
-    environment: 'node',
-    include: ['src/**/*.{test,spec}.{js,ts}'],
+    environment: 'jsdom',
+    include: ['tests/**/*.{test,spec}.{js,ts}'],
   },
 })
 

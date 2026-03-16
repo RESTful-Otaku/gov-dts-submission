@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createTask, deleteTask, healthReady, listTasks, updateTask, updateTaskStatus } from './api'
+import { ApiError, createTask, deleteTask, healthReady, listTasks, updateTask, updateTaskStatus } from '../src/lib/api'
 
 // API uses import.meta.env.VITE_API_BASE ?? 'http://localhost:8080' at build time
 const DEFAULT_BASE = 'http://localhost:8080'

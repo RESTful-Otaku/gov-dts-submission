@@ -1,5 +1,7 @@
 FROM golang:1.22-alpine AS builder
 
+ARG API_BINARY=api
+
 WORKDIR /app
 
 # CGO required for sqlite3 driver; build-base and sqlite-dev for compilation
@@ -10,7 +12,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /bin/api ./cmd/api
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /bin/api ./cmd/${API_BINARY}
 
 FROM alpine:3.20
 
