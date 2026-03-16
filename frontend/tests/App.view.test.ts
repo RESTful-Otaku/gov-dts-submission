@@ -34,15 +34,18 @@ describe('App.svelte', () => {
   })
 
   it('toggles view mode between cards and list', async () => {
-    const { getByText, container } = render(App)
+    const { getByText } = render(App)
+    const cardsButton = getByText('Summary')
     const listButton = getByText('List')
 
     // default is cards view
-    expect(container.querySelector('.tasks-grid')).toBeTruthy()
+    expect(cardsButton.classList.contains('selected')).toBe(true)
+    expect(listButton.classList.contains('selected')).toBe(false)
 
     await fireEvent.click(listButton)
 
-    expect(container.querySelector('.list-wrapper')).toBeTruthy()
+    expect(listButton.classList.contains('selected')).toBe(true)
+    expect(cardsButton.classList.contains('selected')).toBe(false)
   })
 
   it('opens create modal from button', async () => {
