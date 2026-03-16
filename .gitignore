@@ -1,0 +1,23 @@
+# Backend
+backend/data/*.db
+backend/api
+*.exe
+
+# Frontend
+node_modules/
+dist/
+*.local
+
+# Env
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Nested duplicate if present
+/dts-submission/
+
