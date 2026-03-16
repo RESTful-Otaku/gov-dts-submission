@@ -13,9 +13,11 @@
     "cap:android": "npx cap run android",
     "cap:ios": "npx cap run ios",
     "cap:open:android": "npx cap open android",
-    "cap:open:ios": "npx cap open ios"
+    "cap:open:ios": "npx cap open ios",
+    "cap:icons": "npx capacitor-assets generate --ios --android"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@testing-library/svelte": "^5.3.1",
     "@tsconfig/svelte": "^5.0.6",
