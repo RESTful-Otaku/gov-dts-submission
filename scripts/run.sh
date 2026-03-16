@@ -79,7 +79,7 @@ ensure_postgres() {
   start_spinner "Waiting for Postgres on 127.0.0.1:5432..."
   local i=0
   while (( i < 60 )); do
-    if (cd "$ROOT" && docker compose --profile postgres exec -T postgres pg_isready -h 127.0.0.1 -U postgres -d tasks) 2>/dev/null; then
+    if (cd "$ROOT" && docker compose --profile postgres exec -T postgres pg_isready -h 127.0.0.1 -U postgres -d tasks) >/dev/null 2>&1; then
       stop_spinner
       ok "Postgres is ready"
       sleep 2
