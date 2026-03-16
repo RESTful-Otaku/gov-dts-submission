@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // Always force the browser build of Svelte.
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   plugins: [
     svelte(),
   ],
