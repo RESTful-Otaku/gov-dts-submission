@@ -811,7 +811,877 @@
 <svelte:window on:keydown={handleGlobalKeydown} />
 
 <main class="app">
-  <!-- Full header, filters, views, modals, and toasts as in original App.svelte are now restored. -->
-  <!-- Content omitted here for brevity; it matches the original implementation you had. -->
+  <header class="app-header">
+    <div class="app-header-main">
+      <div class="app-header-brand">
+        <div class="govuk-logo">
+          <img
+            src={govLogo}
+            alt="GOV.UK"
+            class="govuk-logo__crest"
+          />
+          <span class="govuk-logo__text"></span>
+        </div>
+        <div>
+          <h1>Caseworker task manager</h1>
+          <p>Capture, prioritise, and complete casework tasks.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-header-theme" aria-label="Theme and text size">
+      <div class="theme-switch">
+        <span class="control-label">Theme</span>
+        <button
+          type="button"
+          class={`theme-toggle-switch ${theme === 'dark' ? 'is-dark' : 'is-light'}`}
+          on:click={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+          aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+        >
+          <span class="theme-toggle-track">
+            <span class="theme-toggle-thumb"></span>
+          </span>
+          <span class="theme-toggle-icons" aria-hidden="true">
+            <span class="theme-icon theme-icon--day"></span>
+            <span class="theme-icon theme-icon--night"></span>
+          </span>
+        </button>
+      </div>
+
+      <div class="font-size-control">
+        <span class="control-label">Text size</span>
+        <div class="font-size-buttons" role="radiogroup" aria-label="Text size">
+          <button
+            type="button"
+            class="font-btn font-btn-normal"
+            class:selected={fontSize === 'normal'}
+            aria-pressed={fontSize === 'normal'}
+            on:click={() => setFontSize('normal')}
+            title="Normal text size"
+          >
+            Aa
+          </button>
+          <button
+            type="button"
+            class="font-btn font-btn-large"
+            class:selected={fontSize === 'large'}
+            aria-pressed={fontSize === 'large'}
+            on:click={() => setFontSize('large')}
+            title="Large text size"
+          >
+            Aa
+          </button>
+          <button
+            type="button"
+            class="font-btn font-btn-xlarge"
+            class:selected={fontSize === 'xlarge'}
+            aria-pressed={fontSize === 'xlarge'}
+            on:click={() => setFontSize('xlarge')}
+            title="Extra large text size"
+          >
+            Aa
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="card">
+    {#if healthStatus !== 'ok'}
+      <div
+        class="health-banner"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="health-indicator health-indicator--{healthStatus}"></span>
+        <div class="health-text">
+          <strong>
+            {healthStatus === 'down'
+              ? 'The service is currently unavailable.'
+              : 'The service may be experiencing issues.'}
+          </strong>
+          {#if healthMessage}
+            <span class="health-message">{healthMessage}</span>
+          {/if}
+        </div>
+        <button type="button" class="health-refresh" on:click={refreshHealth}>
+          Retry
+        </button>
+      </div>
+    {/if}
+    <div class="card-header">
+      <div class="card-header-main">
+        {#if loading}
+          <span class="badge">Loading…</span>
+        {/if}
+      </div>
+      <div class="task-controls" aria-label="View, search, and sort tasks">
+        <div class="task-controls-left">
+          <button
+            type="button"
+            class="btn-create"
+            on:click={openCreateModal}
+            aria-label="Create a new task"
+            title="Create a new task"
+          >
+            Create task
+          </button>
+          <div class="view-toggle" aria-label="View mode">
+            <button
+              type="button"
+              class:selected={viewMode === 'cards'}
+              on:click={() => (viewMode = 'cards')}
+              title="Summary view"
+            >
+              Summary
+            </button>
+            <button
+              type="button"
+              class:selected={viewMode === 'list'}
+              on:click={() => (viewMode = 'list')}
+              title="List view"
+            >
+              List
+            </button>
+            <button
+              type="button"
+              class:selected={viewMode === 'kanban'}
+              on:click={() => (viewMode = 'kanban')}
+              title="Kanban view"
+            >
+              Kanban
+            </button>
+          </div>
+          <div class="search-wrapper">
+            <span class="search-icon" aria-hidden="true"></span>
+            <input
+              bind:this={searchInput}
+              type="search"
+              class="search-input"
+              placeholder="Title, description..."
+              bind:value={searchTerm}
+              title="Search by title, description, status, or date"
+            />
+          </div>
+        </div>
+        <div class="task-controls-right">
+          <button
+            type="button"
+            class="btn-filter"
+            on:click={() => (showFilters = !showFilters)}
+            aria-expanded={showFilters}
+            aria-controls="advanced-filters"
+            aria-label="Toggle filters"
+            title="Show or hide filters"
+          >
+            <span class="filter-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {#if showFilters}
+      <div
+        id="advanced-filters"
+        class="filters-panel"
+        role="region"
+        aria-label="Advanced filters and sorting"
+      >
+        <div class="filter-controls">
+          <label>
+            <span class="control-label">Status</span>
+            <select bind:value={statusFilter} aria-label="Filter by status">
+              <option value="all">All statuses</option>
+              {#each STATUS_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </label>
+          <label>
+            <span class="control-label">Priority</span>
+            <select bind:value={priorityFilter} aria-label="Filter by priority">
+              <option value="all">All priorities</option>
+              {#each PRIORITY_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </label>
+          <label>
+            <span class="control-label">Owner</span>
+            <select bind:value={ownerFilter} aria-label="Filter by owner">
+              <option value="">All owners</option>
+              {#each uniqueOwners as owner}
+                <option value={owner}>{owner}</option>
+              {/each}
+            </select>
+          </label>
+          <label>
+            <span class="control-label">Tag</span>
+            <select bind:value={tagFilter} aria-label="Filter by tag">
+              <option value="">All tags</option>
+              {#each allTags as tag}
+                <option value={tag}>{tag}</option>
+              {/each}
+            </select>
+          </label>
+
+          <div class="date-range">
+            <label>
+              <span class="control-label">Due from</span>
+              <input type="date" bind:value={filterFrom} />
+            </label>
+            <label>
+              <span class="control-label">Due to</span>
+              <input type="date" bind:value={filterTo} />
+            </label>
+          </div>
+
+          <div class="sort-controls">
+            <span class="control-label">Sort</span>
+            <select bind:value={sortKey} aria-label="Sort tasks by">
+              <option value="due">Due date and time</option>
+              <option value="title">Title (A–Z)</option>
+              <option value="priority">Priority</option>
+            </select>
+            <button
+              type="button"
+              class="sort-direction"
+              on:click={() => (sortAscending = !sortAscending)}
+              aria-label={sortAscending ? 'Sort ascending' : 'Sort descending'}
+            >
+              {sortAscending ? 'Asc' : 'Des'}
+            </button>
+          </div>
+          {#if hasActiveFilters}
+            <button
+              type="button"
+              class="btn-clear-filters"
+              on:click={clearAllFilters}
+              aria-label="Clear all filters"
+            >
+              Clear filters
+            </button>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
+    {#if tasks.length > 0}
+      <div class="metrics-strip" role="status" aria-label="Task due date summary">
+        <span class="metric metric--overdue">
+          <strong>{overdueCount}</strong> overdue
+        </span>
+        <span class="metric metric--due-today">
+          <strong>{dueTodayCount}</strong> due today
+        </span>
+        <span class="metric metric--due-soon">
+          <strong>{dueThisWeekCount}</strong> due this week
+        </span>
+      </div>
+    {/if}
+
+    {#if tasks.length === 0 && !loading}
+      <p class="empty">No tasks yet. Click “Create task” to add one.</p>
+    {:else if visibleTasks.length === 0 && !loading}
+      <p class="empty">No tasks match your current search or filters.</p>
+    {:else}
+      {#if viewMode === 'list'}
+        {@const listTasks = visibleTasks}
+        <div class="list-wrapper" role="region" aria-label="Tasks in list view">
+          <form class="quick-add-row" on:submit|preventDefault={handleQuickAdd} aria-label="Quick add task">
+            <input
+              type="text"
+              class="quick-add-title"
+              placeholder="Quick add: enter title..."
+              bind:value={quickAddTitle}
+              aria-label="Task title"
+            />
+            <input
+              type="date"
+              class="quick-add-due-date"
+              bind:value={quickAddDueDate}
+              aria-label="Due date"
+            />
+            <input
+              type="time"
+              class="quick-add-due-time"
+              bind:value={quickAddDueTime}
+              aria-label="Due time"
+            />
+            <button type="submit" class="btn-quick-add" disabled={quickAddSubmitting}>
+              {quickAddSubmitting ? 'Adding…' : 'Add'}
+            </button>
+          </form>
+          {#if selectedTaskIds.size > 0}
+            <div class="bulk-actions" role="toolbar" aria-label="Bulk actions for selected tasks">
+              <span class="bulk-actions-label">{selectedTaskIds.size} selected</span>
+              <div class="bulk-actions-buttons">
+                <span class="bulk-status-label">Mark as:</span>
+                {#each STATUS_OPTIONS as opt}
+                  <button
+                    type="button"
+                    on:click={() => bulkSetStatus(opt.value)}
+                    title={`Mark selected tasks as ${opt.label}`}
+                  >
+                    {opt.label}
+                  </button>
+                {/each}
+                <button
+                  type="button"
+                  class="danger"
+                  on:click={openBulkDeleteModal}
+                  title="Delete selected tasks"
+                >
+                  Delete selected
+                </button>
+                <button type="button" class="btn-clear-selection" on:click={clearListSelection}>
+                  Clear selection
+                </button>
+              </div>
+            </div>
+          {/if}
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th scope="col" class="col-select">
+                  <label class="select-all-label">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all tasks in list"
+                      checked={listTasks.length > 0 && selectedTaskIds.size === listTasks.length}
+                      use:setIndeterminate={isSelectAllIndeterminate}
+                      on:change={selectAllInList}
+                    />
+                  </label>
+                </th>
+                <th scope="col">Title</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Owner</th>
+                <th scope="col">Status</th>
+                <th scope="col">Due</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Created</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each listTasks as taskItem}
+                <tr class:row-selected={selectedTaskIds.has(taskItem.id)}>
+                  <td class="col-select">
+                    <label class="row-select-label">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${taskItem.title}`}
+                        checked={selectedTaskIds.has(taskItem.id)}
+                        on:change={() => toggleTaskSelection(taskItem.id)}
+                      />
+                    </label>
+                  </td>
+                  <td>{taskItem.title}</td>
+                  <td>
+                    <span class="priority-badge priority-{taskItem.priority ?? 'normal'}">
+                      {priorityLabel(taskItem.priority ?? 'normal')}
+                    </span>
+                  </td>
+                  <td>{taskItem.owner ?? '—'}</td>
+                  <td>{statusLabel(taskItem.status)}</td>
+                  <td>{formatDate(taskItem.dueAt)}</td>
+                  <td>
+                    {#if (taskItem.tags ?? []).length > 0}
+                      <span class="tag-chips">
+                        {#each (taskItem.tags ?? []) as tag}
+                          <button
+                            type="button"
+                            class="tag-chip"
+                            on:click={() => filterByTag(tag)}
+                            title="Filter by this tag"
+                          >
+                            {tag}
+                          </button>
+                        {/each}
+                      </span>
+                    {:else}
+                      —
+                    {/if}
+                  </td>
+                  <td>{formatDate(taskItem.createdAt)}</td>
+                  <td class="table-actions">
+                    <button
+                      type="button"
+                      on:click={() => openEditModal(taskItem)}
+                      title="Edit task"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      class="danger"
+                      on:click={() => handleDeleteTask(taskItem.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else if viewMode === 'kanban'}
+        <div class="kanban" role="region" aria-label="Tasks in kanban view">
+          {#each KANBAN_COLUMNS as column}
+            <section
+              class="kanban-column"
+              role="list"
+              aria-label={column.title}
+            >
+              <header class="kanban-column-header">
+                <h3>{column.title}</h3>
+                <span class="badge">
+                  {visibleTasks.filter((t) => t.status === column.status).length}
+                </span>
+              </header>
+              <div
+                class="kanban-column-body"
+                use:dndzone={{
+                  items: tasksForColumn(column.status),
+                  flipDurationMs: KANBAN_FLIP_MS,
+                  type: 'kanban',
+                }}
+                on:consider={(e) => handleKanbanConsider(column.status, e)}
+                on:finalize={(e) => handleKanbanFinalize(column.status, e)}
+                aria-label={column.title}
+              >
+                {#each tasksForColumn(column.status) as task (task.id)}
+                  <article
+                    class="task kanban-task"
+                    role="listitem"
+                    aria-label={task.title}
+                    animate:flip={{ duration: KANBAN_FLIP_MS }}
+                  >
+                    <h4>{task.title}</h4>
+                    <div class="kanban-card-badges">
+                      <span class={`status status-${task.status}`}>
+                        {statusLabel(task.status)}
+                      </span>
+                      <span class="priority-badge priority-{task.priority ?? 'normal'}">
+                        {priorityLabel(task.priority ?? 'normal')}
+                      </span>
+                    </div>
+                    {#if task.owner}
+                      <p class="task-owner">{task.owner}</p>
+                    {/if}
+                    {#if task.description}
+                      <p class="task-description">{task.description}</p>
+                    {/if}
+                    {#if (task.tags ?? []).length > 0}
+                      <div class="tag-chips">
+                        {#each (task.tags ?? []) as tag}
+                          <button
+                            type="button"
+                            class="tag-chip"
+                            on:click|stopPropagation={() => filterByTag(tag)}
+                            title="Filter by this tag"
+                          >
+                            {tag}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
+                    <dl class="meta">
+                      <div>
+                        <dt>Due</dt>
+                        <dd>{formatDate(task.dueAt)}</dd>
+                      </div>
+                    </dl>
+                    <div class="task-actions">
+                      <button
+                        type="button"
+                        on:click|stopPropagation={() => openEditModal(task)}
+                        title="Edit task"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        class="danger"
+                        on:click|stopPropagation={() => handleDeleteTask(task.id)}
+                        title={`Delete task ${task.title}`}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                {:else}
+                  <p class="kanban-empty">Drop tasks here or add via Create task.</p>
+                {/each}
+              </div>
+            </section>
+          {/each}
+        </div>
+      {:else}
+        <div class="tasks-grid" role="region" aria-label="Tasks in summary cards view">
+          {#each visibleTasks as taskItem}
+            <article class="task">
+              <header class="task-header">
+                <h3>{taskItem.title}</h3>
+                <span class="priority-badge priority-{taskItem.priority ?? 'normal'}">
+                  {priorityLabel(taskItem.priority ?? 'normal')}
+                </span>
+                <span class={`status status-${taskItem.status}`}>
+                  {statusLabel(taskItem.status)}
+                </span>
+              </header>
+              {#if taskItem.owner}
+                <p class="task-owner">Owner: {taskItem.owner}</p>
+              {/if}
+              {#if taskItem.description}
+                <p class="task-description">
+                  {taskItem.description}
+                </p>
+              {/if}
+              {#if (taskItem.tags ?? []).length > 0}
+                <div class="tag-chips">
+                  {#each (taskItem.tags ?? []) as tag}
+                    <button
+                      type="button"
+                      class="tag-chip"
+                      on:click={() => filterByTag(tag)}
+                      title="Filter by this tag"
+                    >
+                      {tag}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+
+              <dl class="meta">
+                <div>
+                  <dt>Due</dt>
+                  <dd>{formatDate(taskItem.dueAt)}</dd>
+                </div>
+                <div>
+                  <dt>Created</dt>
+                  <dd>{formatDate(taskItem.createdAt)}</dd>
+                </div>
+              </dl>
+
+              <div class="task-actions">
+                <button
+                  type="button"
+                  on:click={() => openEditModal(taskItem)}
+                  title="Edit task"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  class="danger"
+                  on:click={() => handleDeleteTask(taskItem.id)}
+                  title={`Delete task ${taskItem.title}`}
+                >
+                  Delete
+                </button>
+              </div>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  </section>
+
+  {#if createModalOpen}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      tabindex="-1"
+      on:click={handleModalBackdropClick}
+      on:keydown={(e) => e.key === 'Escape' && closeCreateModal()}
+    >
+      <div
+        class="modal"
+        role="document"
+        on:keydown={(e) => e.key === 'Escape' && closeCreateModal()}
+      >
+        <div class="modal-header">
+          <h2 id="modal-title">Create a new task</h2>
+          <button
+            type="button"
+            class="modal-close"
+            aria-label="Close"
+            on:click={closeCreateModal}
+          >
+            ×
+          </button>
+        </div>
+
+        <form class="task-form" on:submit|preventDefault={handleCreateTask}>
+          <div class="field">
+            <label for="modal-title-input">Title<span class="required">*</span></label>
+            <input
+              bind:this={modalFirstInput}
+              id="modal-title-input"
+              type="text"
+              bind:value={title}
+              placeholder="e.g. Review case bundle"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <label for="modal-description">Description</label>
+            <textarea
+              id="modal-description"
+              rows="3"
+              bind:value={description}
+              placeholder="Optional context or notes for this task"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="modal-status">Status<span class="required">*</span></label>
+            <select id="modal-status" bind:value={status}>
+              {#each STATUS_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="modal-priority">Priority</label>
+            <select id="modal-priority" bind:value={priority}>
+              {#each PRIORITY_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="modal-owner">Owner</label>
+            <input
+              id="modal-owner"
+              type="text"
+              bind:value={owner}
+              placeholder="e.g. Caseworker A"
+            />
+          </div>
+
+          <div class="field">
+            <label for="modal-tags">Tags (comma-separated)</label>
+            <input
+              id="modal-tags"
+              type="text"
+              bind:value={tagsInput}
+              placeholder="e.g. evidence, hearing"
+            />
+          </div>
+
+          <div class="field-group">
+            <div class="field">
+              <label for="modal-due-date">Due date (DD/MM/YYYY)<span class="required">*</span></label>
+              <input
+                id="modal-due-date"
+                type="date"
+                bind:value={dueDate}
+                required
+              />
+            </div>
+            <div class="field">
+              <label for="modal-due-time">Due time (24-hour)<span class="required">*</span></label>
+              <input
+                id="modal-due-time"
+                type="time"
+                bind:value={dueTime}
+                required
+              />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" on:click={closeCreateModal}>Cancel</button>
+            <button type="submit">Create task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {/if}
+
+  {#if editModalTaskId !== null}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-modal-title"
+      tabindex="-1"
+      on:click={handleModalBackdropClick}
+      on:keydown={(e) => e.key === 'Escape' && closeEditModal()}
+    >
+      <div
+        class="modal"
+        role="document"
+        on:keydown={(e) => e.key === 'Escape' && closeEditModal()}
+      >
+        <div class="modal-header">
+          <h2 id="edit-modal-title">Edit task</h2>
+          <button
+            type="button"
+            class="modal-close"
+            aria-label="Close"
+            on:click={closeEditModal}
+          >
+            ×
+          </button>
+        </div>
+
+        <form class="task-form" on:submit|preventDefault={handleEditTask}>
+          <div class="field">
+            <label for="edit-title-input">Title<span class="required">*</span></label>
+            <input
+              bind:this={editModalFirstInput}
+              id="edit-title-input"
+              type="text"
+              bind:value={editTitle}
+              placeholder="e.g. Review case bundle"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <label for="edit-status">Status</label>
+            <select id="edit-status" bind:value={editStatus}>
+              {#each STATUS_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="edit-description">Description</label>
+            <textarea
+              id="edit-description"
+              rows="3"
+              bind:value={editDescription}
+              placeholder="Optional context or notes"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="edit-priority">Priority</label>
+            <select id="edit-priority" bind:value={editPriority}>
+              {#each PRIORITY_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="edit-tags">Tags (comma-separated)</label>
+            <input
+              id="edit-tags"
+              type="text"
+              bind:value={editTagsInput}
+              placeholder="e.g. evidence, hearing"
+            />
+          </div>
+
+          <div class="form-actions">
+            <button type="button" on:click={closeEditModal}>Cancel</button>
+            <button type="submit">Save changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {/if}
+
+  {#if deleteModalTaskIds !== null && deleteModalTaskIds.length > 0}
+    {@const tasksToDelete = tasks.filter((t) => deleteModalTaskIds?.includes(t.id) ?? false)}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-modal-title"
+      tabindex="-1"
+      on:click={handleModalBackdropClick}
+      on:keydown={(e) => e.key === 'Escape' && closeDeleteModal()}
+    >
+      <div
+        class="modal modal--delete"
+        role="document"
+        on:keydown={(e) => e.key === 'Escape' && closeDeleteModal()}
+      >
+        <div class="modal-header">
+          <h2 id="delete-modal-title">
+            {tasksToDelete.length === 1 ? 'Delete task?' : `Delete ${tasksToDelete.length} tasks?`}
+          </h2>
+          <button
+            type="button"
+            class="modal-close"
+            aria-label="Close"
+            on:click={closeDeleteModal}
+          >
+            ×
+          </button>
+        </div>
+        <div class="modal-body">
+          {#if tasksToDelete.length === 1}
+            {@const one = tasksToDelete[0]}
+            <p>
+              {one.status !== 'done'
+                ? 'This task is not marked as done. Are you sure you want to permanently delete it?'
+                : 'Are you sure you want to permanently delete this task?'}
+            </p>
+            <p class="modal-task-title"><strong>{one.title}</strong></p>
+          {:else if tasksToDelete.length > 1}
+            <p>Are you sure you want to permanently delete the following tasks?</p>
+            <ul class="modal-task-list">
+              {#each tasksToDelete as t}
+                <li>{t.title}</li>
+              {/each}
+            </ul>
+          {:else}
+            <p>No tasks to delete. They may have been deleted already.</p>
+          {/if}
+        </div>
+        <div class="modal-actions">
+          <button type="button" on:click={closeDeleteModal}>Cancel</button>
+          <button
+            type="button"
+            class="danger"
+            on:click={performDeleteTask}
+            disabled={tasksToDelete.length === 0}
+          >
+            {tasksToDelete.length === 1 ? 'Delete task' : 'Delete tasks'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <div class="toast-container" role="region" aria-label="Notifications">
+    {#each toasts as toast (toast.id)}
+      <div
+        class="toast toast--{toast.type}"
+        class:toast--exiting={toast.exiting}
+        role="alert"
+        data-toast-id={toast.id}
+      >
+        <span class="toast-message">{toast.message}</span>
+        <button
+          type="button"
+          class="toast-close"
+          aria-label="Dismiss"
+          on:click={() => dismissToast(toast.id)}
+        >
+          ×
+        </button>
+      </div>
+    {/each}
+  </div>
 </main>
+
 

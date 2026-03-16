@@ -1,23 +1,36 @@
-# Backend
+# Backend build artifacts and local data
 backend/data/*.db
 backend/api
 *.exe
+*.test
 
-# Frontend
+# Frontend dependencies and build outputs
 node_modules/
 dist/
 *.local
 
-# Env
+# Capacitor / mobile platform build artifacts
+frontend/android/.gradle/
+frontend/android/.idea/
+frontend/android/local.properties
+frontend/android/**/build/
+frontend/android/**/captures/
+frontend/ios/Pods/
+frontend/ios/**/build/
+
+# Environment files (except example)
 .env
 .env.*
 !.env.example
 
-# IDE / OS
+# IDE / OS / tooling
 .idea/
 .vscode/
 .DS_Store
+*.swp
+*.swo
 
-# Nested duplicate if present
+# Nested duplicate checkout if ever created
 /dts-submission/
+
 
