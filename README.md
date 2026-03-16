@@ -3,11 +3,11 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](VERSION)
 [![CI](https://github.com/RESTful-Otaku/dts-submission/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/dts-submission/actions/workflows/ci.yml)
 
-A full-stack task management app for caseworkers: create, view, update, and delete tasks via a web UI or mobile app. Backend in Go, frontend in Svelte, with SQLite, PostgreSQL, or MariaDB.
+A full-stack task management app for caseworkers: create, view, update, and delete tasks via a web UI or mobile app. Backend in Go, frontend in Svelte, with SQLite, PostgreSQL, MariaDB or MongoDB.
 
 | Platforms | Databases |
 |-----------|-----------|
-| Web · Android · iOS | SQLite · PostgreSQL · MariaDB |
+| Web · Android · iOS | SQLite · PostgreSQL · MariaDB · MongoDB |
 
 ---
 
@@ -39,14 +39,14 @@ Then open **http://localhost:5173**. API runs at **http://localhost:8080**.
 
 ## Running with different databases
 
-The **run script** supports all three databases; choose at the menu:
+The **run script** supports all four databases; choose at the menu:
 
 ```bash
 ./scripts/run.sh
-# → Run → [SQLite | Postgres | MariaDB] → [Local | Docker]
+# → Run → [SQLite | Postgres | MariaDB | MongoDB] → [Local | Docker]
 ```
 
-**Local + Postgres/MariaDB:** The script starts the DB in Docker and runs API + frontend on your machine.
+**Local + Postgres/MariaDB/MongoDB:** The script starts the DB in Docker and runs API + frontend on your machine.
 
 ---
 
