@@ -188,6 +188,10 @@
     createModalOpen = false
   }
 
+  function toggleFilters() {
+    showFilters = !showFilters
+  }
+
   function openEditModal(task: Task) {
     editModalTaskId = task.id
     editTitle = task.title
@@ -1011,7 +1015,7 @@
           <button
             type="button"
             class="btn-create"
-            on:click={openCreateModal}
+            on:click|preventDefault|stopPropagation={openCreateModal}
             aria-label="Create a new task"
             title="Create a new task"
           >
@@ -1059,7 +1063,7 @@
           <button
             type="button"
             class="btn-filter"
-            on:click={() => (showFilters = !showFilters)}
+            on:click|preventDefault|stopPropagation={toggleFilters}
             aria-expanded={showFilters}
             aria-controls="advanced-filters"
             aria-label="Toggle filters"
@@ -1197,8 +1201,6 @@
 
     {#if tasks.length === 0 && !loading}
       <p class="empty">No tasks yet. Click “Create task” to add one.</p>
-    {:else if visibleTasks.length === 0 && !loading}
-      <p class="empty">No tasks match your current search or filters.</p>
     {:else}
       {#if viewMode === 'list'}
         {@const listTasks = visibleTasks}
@@ -1283,6 +1285,11 @@
               </tr>
             </thead>
             <tbody>
+              {#if listTasks.length === 0}
+                <tr>
+                  <td colspan="9" class="empty-cell">No tasks match your current search or filters.</td>
+                </tr>
+              {:else}
               {#each listTasks as taskItem}
                 <tr class:row-selected={selectedTaskIds.has(taskItem.id)}>
                   <td class="col-select">
@@ -1341,6 +1348,7 @@
                   </td>
                 </tr>
               {/each}
+              {/if}
             </tbody>
           </table>
         </div>
@@ -1438,6 +1446,9 @@
         </div>
       {:else}
         <div class="tasks-grid" role="region" aria-label="Tasks in summary cards view">
+          {#if visibleTasks.length === 0}
+            <p class="empty">No tasks match your current search or filters.</p>
+          {:else}
           {#each visibleTasks as taskItem}
             <article class="task">
               <header class="task-header">
@@ -1502,6 +1513,7 @@
               </div>
             </article>
           {/each}
+          {/if}
         </div>
       {/if}
     {/if}
