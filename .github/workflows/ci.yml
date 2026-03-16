@@ -1,0 +1,219 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite (CGO)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run tests
+        working-directory: backend
+        run: go test -v ./...
+
+  frontend:
+    name: Frontend check & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install, test, and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run check
+          npm run test
+          npm run build
+
+  android:
+    name: Android build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 36
+        run: |
+          yes | sdkmanager --licenses 2>/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web assets
+        working-directory: frontend
+        run: npm run build
+
+      - name: Sync Capacitor
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Run Android unit tests
+        working-directory: frontend/android
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Build debug APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug --no-daemon
+
+  ios:
+    name: iOS build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web assets
+        working-directory: frontend
+        run: npm run build
+
+      - name: Sync Capacitor
+        working-directory: frontend
+        run: npx cap sync ios
+
+      - name: Build iOS (simulator)
+        working-directory: frontend/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+  smoke-postgres:
+    name: Smoke test (PostgreSQL)
+    runs-on: ubuntu-latest
+    needs: [backend]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: tasks
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite (CGO)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build API
+        working-directory: backend
+        run: go build -o api ./cmd/api
+
+      - name: Run API (Postgres)
+        working-directory: backend
+        env:
+          DB_DRIVER: pgx
+          DB_DSN: postgres://postgres:postgres@localhost:5432/tasks?sslmode=disable
+          HTTP_PORT: "8080"
+        run: |
+          ./api &
+          sleep 3
+          curl -sf http://localhost:8080/api/ready
+          curl -sf http://localhost:8080/api/tasks | head -c 200
+
+  smoke-mariadb:
+    name: Smoke test (MariaDB)
+    runs-on: ubuntu-latest
+    needs: [backend]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: tasks
+          MARIADB_ROOT_PASSWORD: password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 30s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite (CGO)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build API
+        working-directory: backend
+        run: go build -o api ./cmd/api
+
+      - name: Run API (MariaDB)
+        working-directory: backend
+        env:
+          DB_DRIVER: mariadb
+          DB_DSN: root:password@tcp(127.0.0.1:3306)/tasks?parseTime=true&charset=utf8mb4&loc=UTC&timeout=10s&readTimeout=5s&writeTimeout=5s
+          HTTP_PORT: "8080"
+        run: |
+          ./api &
+          sleep 3
+          curl -sf http://localhost:8080/api/ready
+          curl -sf http://localhost:8080/api/tasks | head -c 200
+

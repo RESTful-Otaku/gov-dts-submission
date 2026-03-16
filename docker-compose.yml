@@ -1,0 +1,71 @@
+# Default: api (SQLite) + frontend. Use override files for Postgres or MariaDB.
+#   docker compose up --build
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml --profile postgres up --build
+#   docker compose -f docker-compose.yml -f docker-compose.mariadb.yml --profile mariadb up --build
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      HTTP_PORT: "8080"
+      # Default: SQLite. Override with -f docker-compose.postgres.yml or docker-compose.mariadb.yml
+    ports:
+      - "8080:8080"
+    volumes:
+      - api-data:/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:16-alpine
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_DB: tasks
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mariadb:
+    image: mariadb:11.4
+    profiles:
+      - mariadb
+    environment:
+      MARIADB_DATABASE: tasks
+      MARIADB_ROOT_PASSWORD: password
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  api-data: {}
+  postgres-data: {}
+  mariadb-data: {}
+

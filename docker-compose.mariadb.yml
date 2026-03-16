@@ -1,0 +1,13 @@
+# Override to run the API with MariaDB.
+#   docker compose -f docker-compose.yml -f docker-compose.mariadb.yml --profile mariadb up --build
+# Then open http://localhost:5173 — the API will use the mariadb service.
+
+services:
+  api:
+    environment:
+      DB_DRIVER: mariadb
+      DB_DSN: root:password@tcp(mariadb:3306)/tasks?parseTime=true&charset=utf8mb4&loc=UTC&timeout=10s&readTimeout=5s&writeTimeout=5s
+    depends_on:
+      mariadb:
+        condition: service_healthy
+

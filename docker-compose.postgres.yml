@@ -1,0 +1,13 @@
+# Override to run the API with PostgreSQL. Start with:
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml --profile postgres up --build
+# Then open http://localhost:5173 — the API will use the postgres service.
+
+services:
+  api:
+    environment:
+      DB_DRIVER: pgx
+      DB_DSN: postgres://postgres:postgres@postgres:5432/tasks?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
