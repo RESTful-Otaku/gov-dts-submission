@@ -7,6 +7,15 @@ export default defineConfig(() => ({
   plugins: [
     svelte(),
   ],
+  server: {
+    // Dev only: avoid CORS by proxying API requests to the local backend.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
   resolve: {
     // Always prefer the "browser" condition so Svelte's browser entry is used.
     conditions: ['browser'],

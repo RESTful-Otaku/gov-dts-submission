@@ -13,8 +13,8 @@ import (
 	"github.com/j-m-harrison/dts-submission/internal/logger"
 	"github.com/j-m-harrison/dts-submission/internal/seed"
 	"github.com/j-m-harrison/dts-submission/internal/storage"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -36,13 +36,16 @@ func main() {
 	}
 
 	clientOpts := options.Client().ApplyURI(mongoURI)
-	client, err := mongo.Connect(ctx, clientOpts)
+	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		log.Fatalf("failed to connect to MongoDB: %v", err)
 	}
 	defer func() {
 		_ = client.Disconnect(context.Background())
 	}()
+	if err := client.Ping(ctx, nil); err != nil {
+		log.Fatalf("failed to ping MongoDB: %v", err)
+	}
 
 	store := storage.NewMongoStore(client, storage.MongoConfig{
 		DatabaseName:   mongoDB,

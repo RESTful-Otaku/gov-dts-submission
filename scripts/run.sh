@@ -106,7 +106,22 @@ ensure_mariadb() {
   start_spinner "Starting MariaDB container..."
   (cd "$ROOT" && docker compose --profile mariadb up -d mariadb) 2>/dev/null
   stop_spinner
-  info "MariaDB container started — API will connect when ready"
+  start_spinner "Waiting for MariaDB on 127.0.0.1:3306..."
+  local i=0
+  while (( i < 90 )); do
+    # Prefer the container's healthcheck script if present.
+    if (cd "$ROOT" && docker compose --profile mariadb exec -T mariadb healthcheck.sh --connect --innodb_initialized) >/dev/null 2>&1; then
+      stop_spinner
+      ok "MariaDB is ready"
+      sleep 2
+      return 0
+    fi
+    sleep 1
+    (( i++ )) || true
+  done
+  stop_spinner
+  fail "MariaDB did not become ready in time"
+  return 1
 }
 
 ensure_mongo() {
@@ -175,7 +190,13 @@ run_local() {
   info "Health: /api/health — Ready: /api/ready"
   printf '\n'
   print_section "🌐 Frontend: dev server"
-  (cd "$FRONTEND" && npm install 2>/dev/null; npm run dev)
+  # Default local run: always talk to the locally-started API, regardless of any developer .env.
+  # (A stale VITE_API_BASE pointing at a LAN IP makes the web UI fail to fetch.)
+  if command -v bun >/dev/null 2>&1; then
+    (cd "$FRONTEND" && bun install >/dev/null 2>&1 || true; VITE_API_BASE="http://localhost:8080" bun run dev)
+  else
+    (cd "$FRONTEND" && npm install 2>/dev/null || true; VITE_API_BASE="http://localhost:8080" npm run dev)
+  fi
 }
 
 run_docker() {
