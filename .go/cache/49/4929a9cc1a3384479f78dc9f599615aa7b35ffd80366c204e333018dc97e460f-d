@@ -1,4 +1,0 @@
-./mariadb_test.go
-./mongodb_test.go
-./postgres_test.go
-./sqlite_test.go

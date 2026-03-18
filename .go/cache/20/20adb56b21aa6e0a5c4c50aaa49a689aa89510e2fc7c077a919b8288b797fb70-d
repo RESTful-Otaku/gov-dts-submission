@@ -1,6 +1,0 @@
-./mariadb.go
-./mongodb.go
-./postgres.go
-./sqlite.go
-./store.go
-./tags.go

@@ -1,6 +1,0 @@
-# test log
-getenv MARIADB_DSN
-getenv MONGO_URI
-getenv MONGO_URI
-getenv MONGO_URI
-getenv POSTGRES_DSN
