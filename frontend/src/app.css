@@ -493,18 +493,18 @@ a {
 }
 
 /* Picker popup and buttons: same font and button shape as app */
-:global(.sdt-calendar-wrap) {
+.sdt-calendar-wrap {
   font-family: inherit;
   padding: 0.75rem;
 }
 
-:global(.sdt-input-wrap) {
+.sdt-input-wrap {
   border: none !important;
 }
 
-:global(.sdt-action-btn),
-:global(.sdt-today-btn),
-:global(.sdt-clear-btn) {
+.sdt-action-btn,
+.sdt-today-btn,
+.sdt-clear-btn {
   font-family: inherit;
   font-size: 0.95rem;
   font-weight: 500;
@@ -513,39 +513,39 @@ a {
   transition: background-color 150ms ease, color 150ms ease;
 }
 
-:global(.sdt-today-btn:hover:not([disabled])),
-:global(.sdt-today-btn:focus),
-:global(.sdt-today-btn:active) {
+.sdt-today-btn:hover:not([disabled]),
+.sdt-today-btn:focus,
+.sdt-today-btn:active {
   background-color: var(--color-hover) !important;
   color: #ffffff !important;
 }
 
-:global(.sdt-clear-btn:hover:not([disabled])),
-:global(.sdt-clear-btn:focus),
-:global(.sdt-clear-btn:active:not([disabled])) {
+.sdt-clear-btn:hover:not([disabled]),
+.sdt-clear-btn:focus,
+.sdt-clear-btn:active:not([disabled]) {
   background-color: var(--color-danger) !important;
   color: #ffffff !important;
 }
 
-:global(.sdt-thead-nav .std-btn),
-:global(.sdt-time-btn),
-:global(.std-btn) {
+.sdt-thead-nav .std-btn,
+.sdt-time-btn,
+.std-btn {
   font-family: inherit;
   color: var(--color-text);
 }
 
-:global(.std-btn:hover:not([disabled])) {
+.std-btn:hover:not([disabled]) {
   background-color: var(--color-bg-subtle) !important;
 }
 
-:global(.is-selected .std-btn),
-:global(.is-selected.in-range .std-btn) {
+.is-selected .std-btn,
+.is-selected.in-range .std-btn {
   background-color: var(--color-accent) !important;
   color: #ffffff !important;
 }
 
-:global(.sdt-time-head),
-:global(.sdt-time-figure) {
+.sdt-time-head,
+.sdt-time-figure {
   color: var(--color-text);
 }
 
@@ -1647,7 +1647,7 @@ button.tag-chip:hover {
 
   .filter-controls select,
   .filter-controls input,
-  :global(.filter-due-input) {
+  .filter-due-input {
     width: 100%;
     max-width: 100%;
     min-width: 0;

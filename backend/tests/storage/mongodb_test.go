@@ -8,8 +8,8 @@ import (
 
 	"github.com/j-m-harrison/dts-submission/internal/storage"
 	"github.com/j-m-harrison/dts-submission/internal/task"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func newTestMongoStore(t *testing.T) *storage.MongoStore {
@@ -27,9 +27,12 @@ func newTestMongoStore(t *testing.T) *storage.MongoStore {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	client, err := mongo.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
 		t.Fatalf("connect mongo: %v", err)
+	}
+	if err := client.Ping(ctx, nil); err != nil {
+		t.Fatalf("ping mongo: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = client.Disconnect(context.Background())
