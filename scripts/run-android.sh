@@ -14,8 +14,8 @@ CMDLINE_URL="https://dl.google.com/android/repository/commandlinetools-linux-147
 AVD_NAME="dts_taskmanager"
 API_PID=""
 
-# Use fixed port 8080 so the emulator app (built with 10.0.2.2:8080) matches the API
-EMULATOR_API_PORT=8080
+# Use fixed port 8081 so the emulator app (built with 10.0.2.2:8081) matches the API
+EMULATOR_API_PORT=8081
 
 cleanup() {
   if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
