@@ -5,11 +5,6 @@ on:
     tags:
       - "v1.*.*"
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Version tag to release (e.g. v1.2.3)"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -27,22 +22,25 @@ jobs:
         id: tag
         shell: bash
         run: |
+          VERSION_FILE="$(tr -d '[:space:]' < VERSION)"
+          VERSION_TAG="v${VERSION_FILE}"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
+            TAG="${VERSION_TAG}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Validate tag format and VERSION file
         shell: bash
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
+          VERSION_FILE="${{ steps.tag.outputs.version }}"
           if [[ ! "$TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
             echo "Expected tag format v1.x.x, got: $TAG"
             exit 1
           fi
-          VERSION_FILE="$(tr -d '[:space:]' < VERSION)"
           if [[ "v${VERSION_FILE}" != "$TAG" ]]; then
             echo "VERSION mismatch: VERSION=${VERSION_FILE}, tag=${TAG}"
             exit 1
