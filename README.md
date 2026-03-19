@@ -69,6 +69,30 @@ npm run cap:android   # or cap:ios on macOS
 
 On device, point `VITE_API_BASE` to your API URL before building (e.g. `http://192.168.1.x:8080`).
 
+### Android APK with local on-device SQLite (no backend required)
+
+This project now supports a mobile-only data mode that stores tasks directly in a SQLite database on the phone.
+
+Build and optionally install the APK:
+
+```bash
+./scripts/build-android-local-sqlite.sh
+```
+
+What this does:
+- Runs frontend tests and type checks
+- Builds web assets with `VITE_MOBILE_LOCAL_DB=true`
+- Syncs Capacitor Android
+- Builds `frontend/android/app/build/outputs/apk/debug/app-debug.apk`
+- Installs and launches on a connected device if `adb` sees one
+
+SQLite DB location on Android (created on first launch):
+- `/data/data/uk.gov.caseworker.taskmanager/databases/taskmanagerSQLite.db`
+
+Notes:
+- This local SQLite mode is enabled only for native builds when `VITE_MOBILE_LOCAL_DB=true`.
+- Web/desktop behavior remains API-backed by default.
+
 ---
 
 ## Testing
