@@ -5,6 +5,7 @@
 [![Mobile Builds](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/mobile-builds.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/mobile-builds.yml)
 [![DB Smoke Tests](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/db-smoke-tests.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/db-smoke-tests.yml)
 [![Android Release](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/android-release.yml/badge.svg)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/android-release.yml)
+[![iOS Release](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/ios-release.yml/badge.svg)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/ios-release.yml)
 
 A full-stack task management app for caseworkers: create, view, update, and delete tasks via a web UI or mobile app. Backend in Go, frontend in Svelte, with SQLite, PostgreSQL, MariaDB or MongoDB.
 
@@ -117,6 +118,12 @@ Android APK prereleases are built by the `Android Release` workflow:
 Trigger options:
 - Push a version tag in the format `v1.x.x` (must match `VERSION` file)
 - Run the workflow manually (`workflow_dispatch`), which auto-reads `VERSION` and uses `v<version>`
+
+iOS prerelease assets are built by the `iOS Release` workflow:
+- Workflow file: `.github/workflows/ios-release.yml`
+- App asset name format: `gov-case-tracker-ios-v1.x.x.app.zip` (simulator app bundle)
+- Release type: GitHub prerelease (pre-production)
+- Includes source archives (`.zip`/`.tar.gz`) automatically via GitHub Releases
 
 ## Web app
 

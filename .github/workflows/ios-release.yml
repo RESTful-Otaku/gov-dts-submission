@@ -1,0 +1,123 @@
+name: iOS Release
+
+on:
+  push:
+    tags:
+      - "v1.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-ios:
+    name: Build and Release iOS App
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          VERSION_FILE="$(tr -d '[:space:]' < VERSION)"
+          VERSION_TAG="v${VERSION_FILE}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${VERSION_TAG}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag format and VERSION file
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION_FILE="${{ steps.tag.outputs.version }}"
+          if [[ ! "$TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected tag format v1.x.x, got: $TAG"
+            exit 1
+          fi
+          if [[ "v${VERSION_FILE}" != "$TAG" ]]; then
+            echo "VERSION mismatch: VERSION=${VERSION_FILE}, tag=${TAG}"
+            exit 1
+          fi
+
+      - name: Create tag for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.8"
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Run frontend checks and tests
+        working-directory: frontend
+        run: |
+          bun run check
+          bun run test
+
+      - name: Build web assets (pre-production local DB mode)
+        working-directory: frontend
+        run: VITE_MOBILE_LOCAL_DB=true bun run build
+
+      - name: Sync Capacitor iOS
+        working-directory: frontend
+        run: npx cap sync ios
+
+      - name: Build iOS simulator app
+        working-directory: frontend/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath build
+
+      - name: Prepare release artifact
+        id: artifact
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          APP_PATH="frontend/ios/App/build/Build/Products/Release-iphonesimulator/App.app"
+          OUT_ZIP="gov-case-tracker-ios-${TAG}.app.zip"
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "Expected app bundle not found: $APP_PATH"
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUT_ZIP"
+          echo "ios_artifact=$OUT_ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Create pre-release / upload iOS artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: gov-case-tracker-${{ steps.tag.outputs.tag }}
+          prerelease: true
+          files: ${{ steps.artifact.outputs.ios_artifact }}
+          body: |
+            Pre-production iOS build for `${{ steps.tag.outputs.tag }}`.
+
+            Included iOS asset:
+            - `${{ steps.artifact.outputs.ios_artifact }}`
+            - Source code archives (zip/tar.gz) generated automatically by GitHub Releases
