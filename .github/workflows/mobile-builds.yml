@@ -33,9 +33,49 @@ on:
       - "frontend/vite.config.ts"
 
 jobs:
+  changes:
+    name: Detect mobile changes
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            android:
+              - '.github/workflows/mobile-builds.yml'
+              - 'frontend/android/**'
+              - 'frontend/src/**'
+              - 'frontend/assets/**'
+              - 'frontend/index.html'
+              - 'frontend/capacitor.config.ts'
+              - 'frontend/package.json'
+              - 'frontend/bun.lock'
+              - 'frontend/tsconfig*.json'
+              - 'frontend/svelte.config.js'
+              - 'frontend/vite.config.ts'
+            ios:
+              - '.github/workflows/mobile-builds.yml'
+              - 'frontend/ios/**'
+              - 'frontend/src/**'
+              - 'frontend/assets/**'
+              - 'frontend/index.html'
+              - 'frontend/capacitor.config.ts'
+              - 'frontend/package.json'
+              - 'frontend/bun.lock'
+              - 'frontend/tsconfig*.json'
+              - 'frontend/svelte.config.js'
+              - 'frontend/vite.config.ts'
+
   android:
     name: Android
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.android == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +126,8 @@ jobs:
   ios:
     name: iOS
     runs-on: macos-latest
+    needs: [changes]
+    if: needs.changes.outputs.ios == 'true'
     steps:
       - uses: actions/checkout@v4
 

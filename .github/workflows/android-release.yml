@@ -1,0 +1,160 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - "v1.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to release (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-android:
+    name: Build and Release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag format and VERSION file
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [[ ! "$TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected tag format v1.x.x, got: $TAG"
+            exit 1
+          fi
+          VERSION_FILE="$(tr -d '[:space:]' < VERSION)"
+          if [[ "v${VERSION_FILE}" != "$TAG" ]]; then
+            echo "VERSION mismatch: VERSION=${VERSION_FILE}, tag=${TAG}"
+            exit 1
+          fi
+
+      - name: Detect relevant changes for Android release
+        id: changes
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PREV_TAG="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          if [[ -n "$PREV_TAG" ]]; then
+            CHANGED="$(git diff --name-only "${PREV_TAG}..${TAG}")"
+          else
+            CHANGED="$(git show --pretty='' --name-only "${TAG}")"
+          fi
+
+          if echo "$CHANGED" | grep -E -q '^(frontend/android/|frontend/src/|frontend/assets/|frontend/index\.html|frontend/capacitor\.config\.ts|frontend/package\.json|frontend/bun\.lock|frontend/tsconfig|frontend/svelte\.config\.js|frontend/vite\.config\.ts|VERSION|\.github/workflows/android-release\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Relevant Android/mobile changes detected."
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No relevant Android/mobile changes detected; release build will be skipped."
+          fi
+
+      - name: Create tag for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Set up Node
+        if: steps.changes.outputs.relevant == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Set up Bun
+        if: steps.changes.outputs.relevant == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.8"
+
+      - name: Set up Java
+        if: steps.changes.outputs.relevant == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Setup Android SDK
+        if: steps.changes.outputs.relevant == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 36
+        if: steps.changes.outputs.relevant == 'true'
+        run: |
+          yes | sdkmanager --licenses 2>/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install frontend deps
+        if: steps.changes.outputs.relevant == 'true'
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Build web assets (pre-production local DB mode)
+        if: steps.changes.outputs.relevant == 'true'
+        working-directory: frontend
+        run: VITE_MOBILE_LOCAL_DB=true bun run build
+
+      - name: Sync Capacitor Android
+        if: steps.changes.outputs.relevant == 'true'
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Build debug APK
+        if: steps.changes.outputs.relevant == 'true'
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Prepare release artifact
+        if: steps.changes.outputs.relevant == 'true'
+        id: artifact
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          SRC="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+          OUT="gov-case-tracker-${TAG}.apk"
+          cp "$SRC" "$OUT"
+          echo "apk_name=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Create pre-release
+        if: steps.changes.outputs.relevant == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: gov-case-tracker-${{ steps.tag.outputs.tag }}
+          prerelease: true
+          files: ${{ steps.artifact.outputs.apk_name }}
+          body: |
+            Pre-production Android APK build for `${{ steps.tag.outputs.tag }}`.
+
+            Included assets:
+            - `${{ steps.artifact.outputs.apk_name }}`
+            - Source code archives (zip/tar.gz) generated automatically by GitHub Releases
+
+      - name: Skip summary
+        if: steps.changes.outputs.relevant != 'true'
+        run: echo "Skipping Android release: no mobile-relevant changes in tagged diff."
