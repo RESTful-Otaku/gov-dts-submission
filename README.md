@@ -111,7 +111,7 @@ Notes:
 Android APK prereleases are built by the `Android Release` workflow:
 - Workflow file: `.github/workflows/android-release.yml`
 - Release name format: `gov-case-tracker-v1.x.x`
-- APK asset name format: `gov-case-tracker-v1.x.x.apk`
+- APK asset name format: `gov-case-tracker-android-v1.x.x.apk`
 - Release type: GitHub prerelease (pre-production)
 - Includes source archives (`.zip`/`.tar.gz`) automatically via GitHub Releases
 
@@ -124,6 +124,15 @@ iOS prerelease assets are built by the `iOS Release` workflow:
 - App asset name format: `gov-case-tracker-ios-v1.x.x.app.zip` (simulator app bundle)
 - Release type: GitHub prerelease (pre-production)
 - Includes source archives (`.zip`/`.tar.gz`) automatically via GitHub Releases
+- Note: this iOS artifact is a simulator `.app` bundle (not an Android APK).
+
+## CI behavior
+
+- CI is split into separate workflows: `Web Build`, `Mobile Builds`, `DB smoke tests`, `Android Release`, `iOS Release`.
+- `Web Build`, `Mobile Builds`, and `DB smoke tests` run only when relevant files change (path-based triggers).
+- In `Mobile Builds`, Android and iOS jobs are independently guarded and only run when their platform-relevant files changed.
+- `DB smoke tests` keeps DB jobs dependent on backend tests within that workflow.
+- You can manually run `Web Build`, `Mobile Builds`, and `DB smoke tests` anytime via `workflow_dispatch` in GitHub Actions.
 
 ## Web app
 
