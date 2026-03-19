@@ -52,6 +52,15 @@ export class ApiError extends Error {
   }
 }
 
+import {
+  createTaskLocal,
+  deleteTaskLocal,
+  isNativeMobileSQLiteEnabled,
+  listTasksLocal,
+  updateTaskLocal,
+  updateTaskStatusLocal,
+} from './mobile-sqlite'
+
 /**
  * Dev ergonomics:
  * - In dev, prefer same-origin `/api/*` and let Vite proxy to the local backend.
@@ -59,6 +68,7 @@ export class ApiError extends Error {
  * - In production builds (Capacitor, docker, preview), use VITE_API_BASE when provided.
  */
 const API_BASE = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE ?? 'http://localhost:8080')
+const USE_LOCAL_MOBILE_DB = isNativeMobileSQLiteEnabled()
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -91,10 +101,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export function listTasks(): Promise<Task[]> {
+  if (USE_LOCAL_MOBILE_DB) {
+    return listTasksLocal()
+  }
   return request<Task[]>('/api/tasks')
 }
 
 export function createTask(payload: CreateTaskPayload): Promise<Task> {
+  if (USE_LOCAL_MOBILE_DB) {
+    return createTaskLocal(payload)
+  }
   return request<Task>('/api/tasks', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -102,6 +118,9 @@ export function createTask(payload: CreateTaskPayload): Promise<Task> {
 }
 
 export function updateTaskStatus(id: string, payload: UpdateStatusPayload): Promise<Task> {
+  if (USE_LOCAL_MOBILE_DB) {
+    return updateTaskStatusLocal(id, payload)
+  }
   return request<Task>(`/api/tasks/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
@@ -109,6 +128,9 @@ export function updateTaskStatus(id: string, payload: UpdateStatusPayload): Prom
 }
 
 export function updateTask(id: string, payload: UpdateTaskPayload): Promise<Task> {
+  if (USE_LOCAL_MOBILE_DB) {
+    return updateTaskLocal(id, payload)
+  }
   return request<Task>(`/api/tasks/${id}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
@@ -116,12 +138,18 @@ export function updateTask(id: string, payload: UpdateTaskPayload): Promise<Task
 }
 
 export function deleteTask(id: string): Promise<void> {
+  if (USE_LOCAL_MOBILE_DB) {
+    return deleteTaskLocal(id)
+  }
   return request<void>(`/api/tasks/${id}`, {
     method: 'DELETE',
   })
 }
 
 export function healthReady(): Promise<{ status: string }> {
+  if (USE_LOCAL_MOBILE_DB) {
+    return Promise.resolve({ status: 'ready' })
+  }
   return request<{ status: string }>('/api/ready')
 }
 

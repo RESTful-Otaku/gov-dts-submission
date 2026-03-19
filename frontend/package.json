@@ -37,6 +37,7 @@
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/ios": "^8.2.0",
+    "@capacitor-community/sqlite": "^7.0.1",
     "svelty-picker": "^6.1.6"
   }
 }
