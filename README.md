@@ -1,7 +1,9 @@
 # DTS Caseworker Task Manager
 
 [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](VERSION)
-[![CI](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/ci.yml)
+[![Web Build](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/web-build.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/web-build.yml)
+[![Mobile Builds](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/mobile-builds.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/mobile-builds.yml)
+[![DB Smoke Tests](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/db-smoke-tests.yml/badge.svg?branch=main)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/db-smoke-tests.yml)
 
 A full-stack task management app for caseworkers: create, view, update, and delete tasks via a web UI or mobile app. Backend in Go, frontend in Svelte, with SQLite, PostgreSQL, MariaDB or MongoDB.
 
