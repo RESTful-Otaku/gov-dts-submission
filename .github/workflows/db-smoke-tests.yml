@@ -1,6 +1,7 @@
 name: DB smoke tests
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, master]
     paths:
