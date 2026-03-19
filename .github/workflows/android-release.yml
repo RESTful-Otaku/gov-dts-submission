@@ -157,4 +157,5 @@ jobs:
 
       - name: Skip summary
         if: steps.changes.outputs.relevant != 'true'
-        run: echo "Skipping Android release: no mobile-relevant changes in tagged diff."
+        run: |
+          echo "Skipping Android release: no mobile-relevant changes in tagged diff."
