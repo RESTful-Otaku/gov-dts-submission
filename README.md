@@ -64,6 +64,18 @@ The **run script** supports all four databases; choose at the menu:
 ```
 Builds, tests, installs, and launches the app. Downloads Android SDK and creates an emulator on first run.
 
+**Quick run (iOS simulator, macOS only):**
+```bash
+./scripts/run-ios.sh
+```
+
+Builds, tests, syncs Capacitor, and launches the app in the iOS Simulator.
+
+Optional local-only mode (no backend API; uses on-device SQLite):
+```bash
+./scripts/run-ios.sh --local-sqlite
+```
+
 **Capacitor (manual):**
 ```bash
 cd frontend
