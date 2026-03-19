@@ -3,8 +3,14 @@ name: DB smoke tests
 on:
   push:
     branches: [main, master]
+    paths:
+      - ".github/workflows/db-smoke-tests.yml"
+      - "backend/**"
   pull_request:
     branches: [main, master]
+    paths:
+      - ".github/workflows/db-smoke-tests.yml"
+      - "backend/**"
 
 jobs:
   backend:

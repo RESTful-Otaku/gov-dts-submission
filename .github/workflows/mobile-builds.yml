@@ -3,8 +3,34 @@ name: Mobile Builds
 on:
   push:
     branches: [main, master]
+    paths:
+      - ".github/workflows/mobile-builds.yml"
+      - "frontend/android/**"
+      - "frontend/ios/**"
+      - "frontend/src/**"
+      - "frontend/assets/**"
+      - "frontend/index.html"
+      - "frontend/capacitor.config.ts"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - "frontend/tsconfig*.json"
+      - "frontend/svelte.config.js"
+      - "frontend/vite.config.ts"
   pull_request:
     branches: [main, master]
+    paths:
+      - ".github/workflows/mobile-builds.yml"
+      - "frontend/android/**"
+      - "frontend/ios/**"
+      - "frontend/src/**"
+      - "frontend/assets/**"
+      - "frontend/index.html"
+      - "frontend/capacitor.config.ts"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - "frontend/tsconfig*.json"
+      - "frontend/svelte.config.js"
+      - "frontend/vite.config.ts"
 
 jobs:
   android:

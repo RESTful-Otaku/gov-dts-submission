@@ -3,8 +3,28 @@ name: Web Build
 on:
   push:
     branches: [main, master]
+    paths:
+      - ".github/workflows/web-build.yml"
+      - "frontend/src/**"
+      - "frontend/tests/**"
+      - "frontend/index.html"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - "frontend/tsconfig*.json"
+      - "frontend/svelte.config.js"
+      - "frontend/vite.config.ts"
   pull_request:
     branches: [main, master]
+    paths:
+      - ".github/workflows/web-build.yml"
+      - "frontend/src/**"
+      - "frontend/tests/**"
+      - "frontend/index.html"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - "frontend/tsconfig*.json"
+      - "frontend/svelte.config.js"
+      - "frontend/vite.config.ts"
 
 jobs:
   web:
