@@ -47,8 +47,8 @@ Usage: ./scripts/run-ios.sh [--local-sqlite] [--api-port <port>] [--api-url <url
 
 Examples:
   ./scripts/run-ios.sh
-  ./scripts/run-ios.sh --api-port 8081
-  ./scripts/run-ios.sh --api-url http://192.168.1.50:8081
+  ./scripts/run-ios.sh --api-port 8082
+  ./scripts/run-ios.sh --api-url http://192.168.1.50:8082
   ./scripts/run-ios.sh --local-sqlite
 EOF
 }
