@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Interactive menu: choose action (test / run / build), DB (SQLite / Postgres / MariaDB), and mode (local / Docker).
+# Interactive launcher: gum TUI for action → database → run mode, with defaults and back navigation.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,6 +7,21 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 source "$SCRIPT_DIR/lib.sh"
+
+# --- Premium TUI labels (used for gum choose + parsing) ---
+LBL_ACT_TEST="🧪  Test — backend + frontend checks"
+LBL_ACT_RUN="🚀  Run — API + frontend dev stack"
+LBL_ACT_BUILD="🏗️  Build — Docker images only"
+LBL_ACT_QUIT="👋  Quit"
+
+LBL_DB_SQLITE="🗃️  SQLite — file-backed, zero setup"
+LBL_DB_POSTGRES="🐘  Postgres — Docker service on localhost"
+LBL_DB_MARIADB="🐬  MariaDB — Docker service on localhost"
+LBL_DB_MONGO="🍃  MongoDB — Docker service on localhost"
+LBL_BACK="⬅️  Back — previous step"
+
+LBL_MODE_LOCAL="💻  Local — API + Vite on this machine"
+LBL_MODE_DOCKER="🐳  Docker — full stack via Compose"
 
 # Track resources started by this script so we can clean them up on exit.
 API_PID=""
@@ -21,21 +36,18 @@ cleanup_all() {
     wait "$API_PID" 2>/dev/null || true
   fi
 
-  # Stop locally-started Postgres container (used for Run → Postgres → Local)
   if (( POSTGRES_LOCAL_STARTED == 1 )); then
     info "Stopping Postgres container..."
     (cd "$ROOT" && docker compose --profile postgres down postgres) 2>/dev/null || \
       (cd "$ROOT" && docker compose --profile postgres stop postgres) 2>/dev/null || true
   fi
 
-  # Stop locally-started MariaDB container (used for Run → MariaDB → Local)
   if (( MARIADB_LOCAL_STARTED == 1 )); then
     info "Stopping MariaDB container..."
-      (cd "$ROOT" && docker compose --profile mariadb down mariadb) 2>/dev/null || \
+    (cd "$ROOT" && docker compose --profile mariadb down mariadb) 2>/dev/null || \
       (cd "$ROOT" && docker compose --profile mariadb stop mariadb) 2>/dev/null || true
   fi
 
-  # Stop locally-started MongoDB container (used for Run → MongoDB → Local)
   if (( MONGO_LOCAL_STARTED == 1 )); then
     info "Stopping MongoDB container..."
     (cd "$ROOT" && docker compose --profile mongo down mongo) 2>/dev/null || \
@@ -43,27 +55,67 @@ cleanup_all() {
   fi
 }
 
-menu() {
-  local default="${1:-1}"
-  shift
-  local prompt="$1"
-  shift
-  local i=1
-  local options=("$@")
-  for opt in "${options[@]}"; do
-    printf '  %d) %s\n' "$i" "$opt" >&2
-    ((i++)) || true
-  done
-  printf '\n' >&2
-  while true; do
-    read -r -p "$prompt [1-$#] (default $default): " choice
-    choice="${choice:-$default}"
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= $# )); then
-      echo "$choice"
-      return
-    fi
-    echo "Invalid option. Enter a number 1-$#." >&2
-  done
+require_gum() {
+  if ! command -v gum >/dev/null 2>&1; then
+    printf '\n  \033[31m✗\033[0m gum is required for this launcher.\n\n' >&2
+    printf '  Install: \033[36mhttps://github.com/charmbracelet/gum#installation\033[0m\n' >&2
+    printf '  e.g. \033[33mbrew install gum\033[0m or \033[33mpacman -S gum\033[0m\n\n' >&2
+    exit 1
+  fi
+  if [[ ! -t 0 ]]; then
+    printf '\n  \033[31m✗\033[0m Interactive terminal required (stdin is not a TTY).\n\n' >&2
+    exit 1
+  fi
+}
+
+# Gum theme — subtle purple/cyan accents
+export GUM_CHOOSE_CURSOR_FOREGROUND="213"
+export GUM_CHOOSE_HEADER_FOREGROUND="117"
+export GUM_CHOOSE_SELECTED_FOREGROUND="255"
+
+ui_banner() {
+  clear 2>/dev/null || true
+  gum style \
+    --margin "1 0" \
+    --padding "1 3" \
+    --border double \
+    --border-foreground "99" \
+    --align center \
+    --foreground "252" \
+    "📋  DTS Caseworker Task Manager" \
+    "" \
+    "$(gum style --foreground "244" "Pick a flow — defaults match the usual dev path. Use ← Back anytime.")"
+}
+
+gum_pick() {
+  local header="$1"
+  local selected="$2"
+  shift 2
+  gum choose \
+    --cursor "▶ " \
+    --header "$header" \
+    --selected "$selected" \
+    "$@"
+}
+
+summary_card() {
+  gum style \
+    --margin "1 0" \
+    --padding "1 3" \
+    --border rounded \
+    --border-foreground "111" \
+    --foreground "252" \
+    "$@"
+}
+
+db_internal_name() {
+  case "$1" in
+    "$LBL_DB_SQLITE") printf '%s\n' "SQLite" ;;
+    "$LBL_DB_POSTGRES") printf '%s\n' "Postgres" ;;
+    "$LBL_DB_MARIADB") printf '%s\n' "MariaDB" ;;
+    "$LBL_DB_MONGO") printf '%s\n' "MongoDB" ;;
+    *) return 1 ;;
+  esac
 }
 
 # --- Actions ---
@@ -109,7 +161,6 @@ ensure_mariadb() {
   start_spinner "Waiting for MariaDB on 127.0.0.1:3306..."
   local i=0
   while (( i < 90 )); do
-    # Prefer the container's healthcheck script if present.
     if (cd "$ROOT" && docker compose --profile mariadb exec -T mariadb healthcheck.sh --connect --innodb_initialized) >/dev/null 2>&1; then
       stop_spinner
       ok "MariaDB is ready"
@@ -190,8 +241,6 @@ run_local() {
   info "Health: /api/health — Ready: /api/ready"
   printf '\n'
   print_section "🌐 Frontend: dev server"
-  # Default local run: always talk to the locally-started API, regardless of any developer .env.
-  # (A stale VITE_API_BASE pointing at a LAN IP makes the web UI fail to fetch.)
   if command -v bun >/dev/null 2>&1; then
     (cd "$FRONTEND" && bun install >/dev/null 2>&1 || true; VITE_API_BASE="http://localhost:8080" bun run dev)
   else
@@ -235,54 +284,135 @@ run_build_docker() {
   return $ret
 }
 
-# --- Main menu ---
-main() {
-  clear 2>/dev/null || true
-  echo ""
-  printf '\033[1;36m'
-  printf '  ╭─────────────────────────────────────────╮\n'
-  printf '  │  📋 DTS Caseworker Task Manager         │\n'
-  printf '  │  Task management for caseworkers        │\n'
-  printf '  ╰─────────────────────────────────────────╯\n'
-  printf '\033[0m\n'
-  ACTION=$(menu 2 "What do you want to do?" "Test (backend + frontend)" "Run (API + frontend)" "Build (Docker images only)" "Quit")
-  echo ""
+pick_action() {
+  gum_pick "🎯  What would you like to do?" "$LBL_ACT_RUN" \
+    "$LBL_ACT_TEST" \
+    "$LBL_ACT_RUN" \
+    "$LBL_ACT_BUILD" \
+    "$LBL_ACT_QUIT"
+}
 
-  case "$ACTION" in
-    1)
-      run_tests
-      ok "All tests passed!"
-      ;;
-    2)
-      DB=$(menu 1 "Which database?" "SQLite" "Postgres" "MariaDB" "MongoDB")
-      MODE=$(menu 1 "Run where?" "Local (API + frontend on this machine)" "Docker (compose)")
-      case "$DB" in
-        1) run_db="SQLite" ;;
-        2) run_db="Postgres" ;;
-        3) run_db="MariaDB" ;;
-        4) run_db="MongoDB" ;;
-      esac
-      case "$MODE" in
-        1) run_local "$run_db" ;;
-        2) run_docker "$run_db" ;;
-      esac
-      ;;
-    3)
-      DB=$(menu 1 "Which database for Docker build?" "SQLite" "Postgres" "MariaDB" "MongoDB")
-      case "$DB" in
-        1) build_db="SQLite" ;;
-        2) build_db="Postgres" ;;
-        3) build_db="MariaDB" ;;
-        4) build_db="MongoDB" ;;
-      esac
-      run_build_docker "$build_db"
-      ;;
-    4)
-      printf '\n  👋 Bye!\n\n'
-      exit 0
-      ;;
-  esac
+pick_database() {
+  gum_pick "🗄️  Which database engine?" "$LBL_DB_SQLITE" \
+    "$LBL_DB_SQLITE" \
+    "$LBL_DB_POSTGRES" \
+    "$LBL_DB_MARIADB" \
+    "$LBL_DB_MONGO" \
+    "$LBL_BACK"
+}
+
+pick_run_mode() {
+  gum_pick "📍  Where should the stack run?" "$LBL_MODE_LOCAL" \
+    "$LBL_MODE_LOCAL" \
+    "$LBL_MODE_DOCKER" \
+    "$LBL_BACK"
+}
+
+flow_run_stack() {
+  local db_choice mode_choice run_db
+  while true; do
+    db_choice=$(pick_database)
+    [[ "$db_choice" == "$LBL_BACK" ]] && return 0
+    run_db=$(db_internal_name "$db_choice") || continue
+
+    while true; do
+      mode_choice=$(pick_run_mode)
+      [[ "$mode_choice" == "$LBL_BACK" ]] && break
+      if [[ "$mode_choice" == "$LBL_MODE_LOCAL" ]]; then
+        summary_card \
+          "✨  Ready to launch" \
+          "" \
+          "🎯  Run" \
+          "🗄️  $run_db" \
+          "💻  Local — API + Vite" \
+          "" \
+          "API → http://localhost:8080  ·  Ctrl+C stops the stack when you're done."
+        run_local "$run_db"
+        exit 0
+      fi
+      if [[ "$mode_choice" == "$LBL_MODE_DOCKER" ]]; then
+        summary_card \
+          "✨  Ready to launch" \
+          "" \
+          "🎯  Run" \
+          "🗄️  $run_db" \
+          "🐳  Docker Compose" \
+          "" \
+          "Compose attaches logs here — Ctrl+C stops the stack."
+        run_docker "$run_db"
+        exit 0
+      fi
+    done
+  done
+}
+
+flow_build_images() {
+  local db_choice build_db
+  while true; do
+    db_choice=$(pick_database)
+    [[ "$db_choice" == "$LBL_BACK" ]] && return 0
+    build_db=$(db_internal_name "$db_choice") || continue
+    summary_card \
+      "✨  Docker build" \
+      "" \
+      "🏗️  Build images only" \
+      "🗄️  $build_db" \
+      "" \
+      "Images only — no containers started."
+    run_build_docker "$build_db"
+    local st=$?
+    if (( st == 0 )); then
+      summary_card \
+        "✅  Build succeeded" \
+        "" \
+        "Images are ready — launch the stack from this menu when you need it."
+    else
+      summary_card \
+        "✗  Build failed" \
+        "" \
+        "Fix the errors above and try again."
+    fi
+    exit "$st"
+  done
+}
+
+main() {
+  require_gum
+  ui_banner
+
+  while true; do
+    local act
+    act=$(pick_action)
+    case "$act" in
+      "$LBL_ACT_TEST")
+        summary_card \
+          "✨  Test run" \
+          "" \
+          "🧪  Backend tests + frontend check/build" \
+          "" \
+          "go test ./…  ·  npm run check && npm run build"
+        run_tests
+        summary_card \
+          "✅  All tests passed" \
+          "" \
+          "Nice work — tree’s green. 🌿"
+        exit 0
+        ;;
+      "$LBL_ACT_QUIT")
+        gum style --margin "1" --foreground "244" "👋  See you next time."
+        exit 0
+        ;;
+      "$LBL_ACT_RUN")
+        flow_run_stack
+        ;;
+      "$LBL_ACT_BUILD")
+        flow_build_images
+        ;;
+      *)
+        gum style --foreground "196" "Unexpected choice — try again."
+        ;;
+    esac
+  done
 }
 
 main "$@"
-
