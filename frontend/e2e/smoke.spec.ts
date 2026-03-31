@@ -8,6 +8,17 @@ async function expectTaskTitleVisible(page: any, title: string): Promise<void> {
 test.describe('app smoke (API + built UI)', () => {
   test.describe.configure({ mode: 'serial' })
 
+  test.beforeEach(async ({ page }) => {
+    // CI/first-run auto-opens Help; it blocks clicks by design. Disable for deterministic e2e.
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('task-app-onboarding-auto-dismiss-v1', '1')
+      } catch {
+        /* ignore */
+      }
+    })
+  })
+
   test('loads shell and shows a task from the API', async ({ page, request }) => {
     const title = `E2E seeded smoke task ${Date.now()}`
     const dueAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
@@ -17,6 +28,12 @@ test.describe('app smoke (API + built UI)', () => {
     expect(created.ok()).toBeTruthy()
 
     await page.goto('/')
+    // Safety: if anything still opened Help (e.g. test runner reuse), close it.
+    const helpDialog = page.locator('.modal-backdrop--help')
+    if (await helpDialog.isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: 'Close menu' }).click()
+      await expect(helpDialog).toBeHidden()
+    }
     await expect(page.getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
     await expectTaskTitleVisible(page, title)
   })
