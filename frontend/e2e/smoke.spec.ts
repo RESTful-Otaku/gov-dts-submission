@@ -1,15 +1,5 @@
 import { expect, test } from '@playwright/test'
 
-async function firstTaskTitleFromApi(request: any): Promise<string> {
-  const res = await request.get('/api/tasks')
-  expect(res.ok()).toBeTruthy()
-  const data = (await res.json()) as { tasks?: Array<{ title?: string }> } | Array<{ title?: string }>
-  const tasks = Array.isArray(data) ? data : (data.tasks ?? [])
-  const title = tasks.find((t) => typeof t?.title === 'string' && t.title.trim().length > 0)?.title?.trim()
-  expect(title, 'Expected API to return at least one seeded task title').toBeTruthy()
-  return title as string
-}
-
 async function expectTaskTitleVisible(page: any, title: string): Promise<void> {
   // Don’t couple to semantics (cards=heading, list=table, kanban=h4). Assert visible text in the task area.
   await expect(page.getByText(title, { exact: true })).toBeVisible({ timeout: 30_000 })
@@ -18,11 +8,17 @@ async function expectTaskTitleVisible(page: any, title: string): Promise<void> {
 test.describe('app smoke (API + built UI)', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test('loads shell and shows a seeded demo task from API', async ({ page, request }) => {
-    const seededTitle = await firstTaskTitleFromApi(request)
+  test('loads shell and shows a task from the API', async ({ page, request }) => {
+    const title = `E2E seeded smoke task ${Date.now()}`
+    const dueAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
+    const created = await request.post('/api/tasks', {
+      data: { title, status: 'todo', priority: 'normal', dueAt },
+    })
+    expect(created.ok()).toBeTruthy()
+
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
-    await expectTaskTitleVisible(page, seededTitle)
+    await expectTaskTitleVisible(page, title)
   })
 
   test('create task flow (API seed): task appears in UI', async ({ page, request }) => {
