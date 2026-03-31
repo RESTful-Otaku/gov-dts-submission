@@ -1,0 +1,26 @@
+platform :ios, '15.0'
+use_frameworks!
+
+# CocoaPods integration for Capacitor + community plugins.
+# This is required for plugins that don't ship SwiftPM packages (e.g. @capacitor-community/sqlite).
+
+def capacitor_pods
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+end
+
+target 'App' do
+  capacitor_pods
+
+  # SQLite plugin (iOS implementation via CocoaPods)
+  pod 'CapacitorCommunitySqlite', :path => '../../node_modules/@capacitor-community/sqlite'
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+    end
+  end
+end
+

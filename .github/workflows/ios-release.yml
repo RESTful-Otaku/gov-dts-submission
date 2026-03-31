@@ -86,10 +86,14 @@ jobs:
         working-directory: frontend
         run: bunx cap sync ios
 
+      - name: Install CocoaPods (iOS plugins)
+        working-directory: frontend/ios/App
+        run: pod install
+
       - name: Build iOS simulator app
         working-directory: frontend/ios/App
         run: |
-          xcodebuild -project App.xcodeproj -scheme App \
+          xcodebuild -workspace App.xcworkspace -scheme App \
             -destination 'generic/platform=iOS Simulator' \
             -configuration Release build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
             -derivedDataPath build
