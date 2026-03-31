@@ -1,12 +1,28 @@
 import { expect, test } from '@playwright/test'
 
+async function firstTaskTitleFromApi(request: any): Promise<string> {
+  const res = await request.get('/api/tasks')
+  expect(res.ok()).toBeTruthy()
+  const data = (await res.json()) as { tasks?: Array<{ title?: string }> } | Array<{ title?: string }>
+  const tasks = Array.isArray(data) ? data : (data.tasks ?? [])
+  const title = tasks.find((t) => typeof t?.title === 'string' && t.title.trim().length > 0)?.title?.trim()
+  expect(title, 'Expected API to return at least one seeded task title').toBeTruthy()
+  return title as string
+}
+
+async function expectTaskTitleVisible(page: any, title: string): Promise<void> {
+  // Don’t couple to semantics (cards=heading, list=table, kanban=h4). Assert visible text in the task area.
+  await expect(page.getByText(title, { exact: true })).toBeVisible({ timeout: 30_000 })
+}
+
 test.describe('app smoke (API + built UI)', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test('loads shell and shows seeded demo task from API', async ({ page }) => {
+  test('loads shell and shows a seeded demo task from API', async ({ page, request }) => {
+    const seededTitle = await firstTaskTitleFromApi(request)
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Review case bundle', exact: true })).toBeVisible({ timeout: 30_000 })
+    await expectTaskTitleVisible(page, seededTitle)
   })
 
   test('create task flow (API seed): task appears in UI', async ({ page, request }) => {
@@ -24,7 +40,7 @@ test.describe('app smoke (API + built UI)', () => {
     expect(res.ok()).toBeTruthy()
 
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 })
+    await expectTaskTitleVisible(page, title)
   })
 
   test('edit task flow: open edit modal, change title, save, see toast', async ({ page, request }) => {
@@ -36,9 +52,9 @@ test.describe('app smoke (API + built UI)', () => {
     expect(created.ok()).toBeTruthy()
 
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 })
+    await expectTaskTitleVisible(page, title)
 
-    const card = page.locator('article.task', { has: page.getByRole('heading', { name: title }) })
+    const card = page.locator('article.task', { hasText: title })
     await card.getByRole('button', { name: 'Edit' }).click()
     await expect(page.getByRole('heading', { name: 'Edit task', exact: true })).toBeVisible()
 
@@ -47,7 +63,7 @@ test.describe('app smoke (API + built UI)', () => {
     await page.getByRole('button', { name: 'Save changes' }).click()
 
     await expect(page.getByText('Task updated.')).toBeVisible()
-    await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()
+    await expectTaskTitleVisible(page, updatedTitle)
   })
 
   test('delete task flow: open delete modal, confirm, see toast', async ({ page, request }) => {
@@ -59,9 +75,9 @@ test.describe('app smoke (API + built UI)', () => {
     expect(created.ok()).toBeTruthy()
 
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 })
+    await expectTaskTitleVisible(page, title)
 
-    const card = page.locator('article.task', { has: page.getByRole('heading', { name: title }) })
+    const card = page.locator('article.task', { hasText: title })
     await card.getByRole('button', { name: 'Delete' }).click()
     await expect(page.getByText('Delete task?')).toBeVisible()
 
@@ -78,19 +94,17 @@ test.describe('app smoke (API + built UI)', () => {
     expect(created.ok()).toBeTruthy()
 
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 })
+    await expectTaskTitleVisible(page, title)
 
     await page.getByRole('button', { name: 'Toggle filters' }).click()
     await expect(page.getByRole('region', { name: 'Advanced filters and sorting' })).toBeVisible()
 
     await page.getByLabel('Filter by status').selectOption('done')
-    await expect(page.getByRole('heading', { name: title })).toBeVisible()
+    await expectTaskTitleVisible(page, title)
   })
 
   test('view mode toggle: Summary stays selected after switching to List and back', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Review case bundle', exact: true })).toBeVisible({ timeout: 30_000 })
-
     const summary = page.getByRole('button', { name: 'Summary', exact: true })
     const list = page.getByRole('button', { name: 'List', exact: true })
 
