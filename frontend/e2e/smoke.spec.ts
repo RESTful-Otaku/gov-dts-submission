@@ -19,6 +19,15 @@ test.describe('app smoke (API + built UI)', () => {
     })
   })
 
+  async function openHelpSettings(page: any): Promise<void> {
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
+    await page.getByRole('button', { name: 'Open menu' }).click()
+    await expect(page.locator('.modal-backdrop--help')).toBeVisible()
+    await page.getByRole('tab', { name: 'Settings' }).click()
+    await expect(page.getByRole('tabpanel')).toBeVisible()
+  }
+
   test('loads shell and shows a task from the API', async ({ page, request }) => {
     const title = `E2E seeded smoke task ${Date.now()}`
     const dueAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
@@ -135,7 +144,7 @@ test.describe('app smoke (API + built UI)', () => {
   })
 
   test('theme control toggles data-theme on the document root', async ({ page }) => {
-    await page.goto('/')
+    await openHelpSettings(page)
     const toDark = page.getByRole('button', { name: 'Switch to dark mode' })
     await expect(toDark).toBeVisible()
     await toDark.click()
