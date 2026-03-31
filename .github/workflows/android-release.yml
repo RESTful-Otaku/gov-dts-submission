@@ -120,7 +120,7 @@ jobs:
       - name: Sync Capacitor Android
         if: steps.changes.outputs.relevant == 'true'
         working-directory: frontend
-        run: npx cap sync android
+        run: bunx cap sync android
 
       - name: Build debug APK
         if: steps.changes.outputs.relevant == 'true'

@@ -12,7 +12,10 @@ import type {
 const DB_NAME = 'taskmanager'
 const DB_VERSION = 1
 const ENCRYPTION_MODE = 'no-encryption'
-const READ_ONLY = false
+/** Arg 2 of createConnection: use SQLCipher (must stay false when ENCRYPTION_MODE is no-encryption). */
+const USE_SQLCIPHER_ENCRYPTION = false
+/** Arg 5 of createConnection / isConnection / retrieveConnection: false = read-write. */
+const CONNECTION_READONLY = false
 
 let dbPromise: Promise<SQLiteDBConnection> | null = null
 
@@ -113,6 +116,18 @@ function dueIsoFromNow(days: number): string {
   return d.toISOString()
 }
 
+function taskRowCount(values: { values?: unknown[] } | undefined): number {
+  const row = values?.values?.[0] as Record<string, unknown> | undefined
+  if (!row) return 0
+  const raw =
+    row.count ??
+    row.COUNT ??
+    row['COUNT(*)'] ??
+    Object.values(row).find((v) => v !== undefined && v !== null)
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(n) ? n : 0
+}
+
 function toTask(row: Record<string, unknown>): Task {
   return {
     id: String(row.id),
@@ -135,10 +150,16 @@ async function getDb(): Promise<SQLiteDBConnection> {
     const sqlite = new SQLiteConnection(CapacitorSQLite)
     await sqlite.checkConnectionsConsistency()
 
-    const existing = await sqlite.isConnection(DB_NAME, READ_ONLY)
+    const existing = await sqlite.isConnection(DB_NAME, CONNECTION_READONLY)
     const db = existing.result
-      ? await sqlite.retrieveConnection(DB_NAME, READ_ONLY)
-      : await sqlite.createConnection(DB_NAME, READ_ONLY, ENCRYPTION_MODE, DB_VERSION, READ_ONLY)
+      ? await sqlite.retrieveConnection(DB_NAME, CONNECTION_READONLY)
+      : await sqlite.createConnection(
+          DB_NAME,
+          USE_SQLCIPHER_ENCRYPTION,
+          ENCRYPTION_MODE,
+          DB_VERSION,
+          CONNECTION_READONLY,
+        )
 
     await db.open()
     await db.execute(`
@@ -165,7 +186,7 @@ async function getDb(): Promise<SQLiteDBConnection> {
     const seedStatus = await db.query(`SELECT value FROM app_meta WHERE key = 'seed_demo_tasks_v1';`)
     if ((seedStatus.values?.length ?? 0) === 0) {
       const countRes = await db.query(`SELECT COUNT(*) AS count FROM tasks;`)
-      const existingCount = Number((countRes.values?.[0] as { count?: number } | undefined)?.count ?? 0)
+      const existingCount = taskRowCount(countRes)
 
       if (existingCount === 0) {
         const now = nowIso()
@@ -199,12 +220,19 @@ async function getDb(): Promise<SQLiteDBConnection> {
   return dbPromise
 }
 
+/**
+ * Use on-device SQLite for iOS/Android so APK/IPA builds work without a reachable HTTP API.
+ * Opt out with VITE_MOBILE_LOCAL_DB=false (or 0 / no / off) when the native app should use VITE_API_BASE only.
+ */
 export function isNativeMobileSQLiteEnabled(): boolean {
-  const enabledFlag = String(import.meta.env.VITE_MOBILE_LOCAL_DB ?? '').toLowerCase()
-  if (enabledFlag !== 'true' && enabledFlag !== '1' && enabledFlag !== 'yes') {
+  if (Capacitor.getPlatform() === 'web') {
     return false
   }
-  return Capacitor.getPlatform() !== 'web'
+  const flag = String(import.meta.env.VITE_MOBILE_LOCAL_DB ?? '').toLowerCase()
+  if (flag === 'false' || flag === '0' || flag === 'no' || flag === 'off') {
+    return false
+  }
+  return true
 }
 
 export async function listTasksLocal(): Promise<Task[]> {

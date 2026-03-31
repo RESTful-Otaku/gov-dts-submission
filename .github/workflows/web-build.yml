@@ -8,31 +8,52 @@ on:
       - ".github/workflows/web-build.yml"
       - "frontend/src/**"
       - "frontend/tests/**"
+      - "frontend/e2e/**"
+      - "frontend/scripts/e2e-web-servers.sh"
+      - "frontend/playwright.config.ts"
       - "frontend/index.html"
       - "frontend/package.json"
       - "frontend/bun.lock"
       - "frontend/tsconfig*.json"
       - "frontend/svelte.config.js"
       - "frontend/vite.config.ts"
+      - "frontend/nginx.conf"
+      - "backend/**"
   pull_request:
     branches: [main, master]
     paths:
       - ".github/workflows/web-build.yml"
       - "frontend/src/**"
       - "frontend/tests/**"
+      - "frontend/e2e/**"
+      - "frontend/scripts/e2e-web-servers.sh"
+      - "frontend/playwright.config.ts"
       - "frontend/index.html"
       - "frontend/package.json"
       - "frontend/bun.lock"
       - "frontend/tsconfig*.json"
       - "frontend/svelte.config.js"
       - "frontend/vite.config.ts"
+      - "frontend/nginx.conf"
+      - "backend/**"
 
 jobs:
   web:
     name: Web
     runs-on: ubuntu-latest
+    env:
+      CI: "true"
+      CGO_CFLAGS: "-Wno-discarded-qualifiers"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install SQLite (CGO) for e2e API
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -51,3 +72,11 @@ jobs:
           bun run check
           bun run test
           bun run build
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: bunx playwright install chromium --with-deps
+
+      - name: End-to-end tests
+        working-directory: frontend
+        run: bun run test:e2e

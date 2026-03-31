@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +26,13 @@ import (
 	"github.com/j-m-harrison/dts-submission/internal/seed"
 	"github.com/j-m-harrison/dts-submission/internal/storage"
 	"github.com/j-m-harrison/dts-submission/internal/task"
+)
+
+// maxJSONRequestBytes caps JSON bodies for task mutations to limit allocation and parse cost.
+const maxJSONRequestBytes = 1 << 20 // 1 MiB
+const (
+	defaultListTasksLimit = 50
+	maxListTasksLimit     = 200
 )
 
 type Server struct {
@@ -38,8 +48,14 @@ type Server struct {
 // existing behaviour of using a concrete *sql.DB for migrations, seeding, and
 // readiness checks.
 func NewServer(db *sql.DB) *Server {
+	return NewServerWithDriver(db, strings.TrimSpace(os.Getenv("DB_DRIVER")))
+}
+
+// NewServerWithDriver constructs a Server backed by SQL and an explicit driver.
+// Prefer this constructor so storage selection is not coupled to process env.
+func NewServerWithDriver(db *sql.DB, driver string) *Server {
 	return &Server{
-		store: storage.NewStoreFromDB(db),
+		store: storage.NewStoreFromDBDriver(db, driver),
 		db:    db,
 		dbPing: func(ctx context.Context) error {
 			if db == nil {
@@ -67,11 +83,18 @@ func NewServerWithStore(store storage.Store, ping func(ctx context.Context) erro
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/api/health", withCORS(s.handleHealth))
-	mux.HandleFunc("/api/live", withCORS(s.handleLive))
-	mux.HandleFunc("/api/ready", withCORS(s.handleReady))
-	mux.HandleFunc("/api/tasks", withCORS(s.handleTasksCollection))
-	mux.HandleFunc("/api/tasks/", withCORS(s.handleTaskItem))
+	reg := func(pattern string, requiresAuth bool, h http.HandlerFunc) {
+		handler := withSecurityHeaders(withCORS(h))
+		if requiresAuth {
+			handler = withAPITokenAuth(handler)
+		}
+		mux.HandleFunc(pattern, handler)
+	}
+	reg("/api/health", false, s.handleHealth)
+	reg("/api/live", false, s.handleLive)
+	reg("/api/ready", false, s.handleReady)
+	reg("/api/tasks", true, s.handleTasksCollection)
+	reg("/api/tasks/", true, s.handleTaskItem)
 }
 
 // retryMigrate retries fn until success, ctx cancelled, or maxDuration elapsed.
@@ -171,11 +194,20 @@ func InitDatabase(ctx context.Context, dataDir string, cfg *config.AppConfig) (*
 		return nil, fmt.Errorf("unsupported DB_DRIVER %q", driver)
 	}
 
-	if err := seed.DemoTasks(ctx, db); err != nil {
-		_ = db.Close()
-		return nil, err
+	if shouldSeedDemoData() {
+		if err := seed.DemoTasksWithDriver(ctx, db, driver); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
 	return db, nil
+}
+
+func shouldSeedDemoData() bool {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("SEED_DEMO_TASKS"))); v != "" {
+		return v == "1" || v == "true" || v == "yes"
+	}
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -266,8 +298,7 @@ type updateTaskRequest struct {
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	var req createTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+	if !requireJSONBody(w, r, &req) {
 		return
 	}
 	dueAt, err := time.Parse(time.RFC3339, req.DueAt)
@@ -303,13 +334,38 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	tasks, err := s.store.ListTasks(r.Context())
+	opts, err := parseListOptions(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	tasks, err := s.store.ListTasks(r.Context(), opts)
 	if err != nil {
 		logger.Error("ListTasks error: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to list tasks")
 		return
 	}
 	writeJSON(w, http.StatusOK, tasks)
+}
+
+func parseListOptions(r *http.Request) (storage.ListOptions, error) {
+	limit := defaultListTasksLimit
+	offset := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > maxListTasksLimit {
+			return storage.ListOptions{}, fmt.Errorf("limit must be an integer between 1 and %d", maxListTasksLimit)
+		}
+		limit = n
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return storage.ListOptions{}, errors.New("offset must be a non-negative integer")
+		}
+		offset = n
+	}
+	return storage.ListOptions{Limit: limit, Offset: offset}, nil
 }
 
 func (s *Server) getTask(w http.ResponseWriter, r *http.Request, id string) {
@@ -323,8 +379,7 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request, id string) {
 
 func (s *Server) updateTaskStatus(w http.ResponseWriter, r *http.Request, id string) {
 	var req updateStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+	if !requireJSONBody(w, r, &req) {
 		return
 	}
 	current, err := s.store.GetTask(r.Context(), id)
@@ -347,8 +402,7 @@ func (s *Server) updateTaskStatus(w http.ResponseWriter, r *http.Request, id str
 
 func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, id string) {
 	var req updateTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+	if !requireJSONBody(w, r, &req) {
 		return
 	}
 	input := &task.UpdateTaskInput{}
@@ -433,17 +487,82 @@ func writeDomainError(w http.ResponseWriter, err error) {
 	}
 }
 
+// requireJSONBody reads a bounded JSON body with strict decoding (unknown fields rejected).
+// It writes an error response and returns false on failure.
+func requireJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if ct == "" || !strings.Contains(ct, "application/json") {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return false
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONRequestBytes+1))
+	_ = r.Body.Close()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return false
+	}
+	if len(body) > maxJSONRequestBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return false
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+		return false
+	}
+	if dec.More() {
+		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+		return false
+	}
+	return true
+}
+
+func withSecurityHeaders(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+		w.Header().Set("Cache-Control", "no-store")
+		next(w, r)
+	}
+}
+
+// corsOriginAllowed returns whether the request Origin may receive CORS credentials/headers.
+// If CORS_ALLOWED_ORIGINS is set (comma-separated exact origins), only those are allowed;
+// otherwise local dev and mobile defaults apply.
+func corsOriginAllowed(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	if list := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); list != "" {
+		for _, part := range strings.Split(list, ",") {
+			if strings.TrimSpace(part) == origin {
+				return true
+			}
+		}
+		return false
+	}
+	// Dev + Capacitor + Android emulator defaults (include 127.0.0.1 for Vite preview / e2e).
+	// "null" is denied by default and can be enabled explicitly for constrained runtimes.
+	allowNullOrigin := strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_NULL_ORIGIN")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_NULL_ORIGIN")), "true") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_NULL_ORIGIN")), "yes")
+	return origin == "http://localhost:5173" ||
+		(allowNullOrigin && origin == "null") ||
+		strings.HasPrefix(origin, "capacitor://") ||
+		strings.HasPrefix(origin, "https://localhost") ||
+		strings.HasPrefix(origin, "http://10.0.2.2") ||
+		strings.HasPrefix(origin, "http://localhost") ||
+		strings.HasPrefix(origin, "http://127.0.0.1") ||
+		strings.HasPrefix(origin, "http://[::1]")
+}
+
 func withCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		// Allow web dev (localhost:5173), Capacitor (capacitor://, https://localhost), emulator (10.0.2.2), and null
-		allowed := origin == "http://localhost:5173" ||
-			origin == "null" ||
-			strings.HasPrefix(origin, "capacitor://") ||
-			strings.HasPrefix(origin, "https://localhost") ||
-			strings.HasPrefix(origin, "http://10.0.2.2") ||
-			strings.HasPrefix(origin, "http://localhost")
-		if allowed && origin != "" {
+		if corsOriginAllowed(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
@@ -451,6 +570,40 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func withAPITokenAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		env := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+		requireAuth := env != "" && env != "development"
+		if raw := strings.TrimSpace(os.Getenv("API_AUTH_REQUIRED")); raw != "" {
+			v := strings.ToLower(raw)
+			requireAuth = v == "1" || v == "true" || v == "yes"
+		}
+		if !requireAuth {
+			next(w, r)
+			return
+		}
+
+		token := strings.TrimSpace(os.Getenv("API_AUTH_TOKEN"))
+		if token == "" {
+			writeError(w, http.StatusServiceUnavailable, "authentication is required but API_AUTH_TOKEN is not configured")
+			return
+		}
+
+		const prefix = "Bearer "
+		got := strings.TrimSpace(r.Header.Get("Authorization"))
+		if !strings.HasPrefix(got, prefix) {
+			writeError(w, http.StatusUnauthorized, "missing bearer token")
+			return
+		}
+		presented := strings.TrimSpace(strings.TrimPrefix(got, prefix))
+		if subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
+			writeError(w, http.StatusUnauthorized, "invalid bearer token")
 			return
 		}
 		next(w, r)

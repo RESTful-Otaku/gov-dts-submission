@@ -1,0 +1,26 @@
+/**
+ * Stylesheet graph for the app. Order matters: tokens first, then layout, components,
+ * and breakpoint overrides last.
+ *
+ * Folders:
+ *   tokens/       — colour palette + :root typography defaults
+ *   breakpoints/  — mobile (≤768), narrow phone (≤380), tablet (769–1024), cross-device tuning, modal drawer (≤640)
+ *   pickers/      — third-party datepicker theming
+ *   universal/    — global forms, buttons, header chrome (all viewports)
+ */
+
+@import './tokens/index.css';
+@import './base.css';
+@import './universal/forms-and-buttons.css';
+@import './card-health-modals.css';
+@import './breakpoints/modal-drawer.css';
+@import './pickers/svelty-datepicker.css';
+@import './controls-picker.css';
+@import './toasts.css';
+@import './cards.css';
+@import './list.css';
+@import './kanban.css';
+@import './swipe-task.css';
+@import './task-card-reader.css';
+@import './help-onboarding.css';
+@import './breakpoints/index.css';

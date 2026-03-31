@@ -16,11 +16,17 @@ func DemoTasks(ctx context.Context, db *sql.DB) error {
 	return DemoTasksStore(ctx, storage.NewStoreFromDB(db))
 }
 
+// DemoTasksWithDriver inserts demo tasks using an explicit SQL driver for store
+// selection. Prefer this in startup paths to avoid implicit env coupling.
+func DemoTasksWithDriver(ctx context.Context, db *sql.DB, driver string) error {
+	return DemoTasksStore(ctx, storage.NewStoreFromDBDriver(db, driver))
+}
+
 // DemoTasksStore inserts demo tasks if the given store is empty.
 // This enables seeding for non-SQL backends (e.g. MongoDB) while sharing the
 // same demo dataset.
 func DemoTasksStore(ctx context.Context, store storage.Store) error {
-	existing, err := store.ListTasks(ctx)
+	existing, err := store.ListTasks(ctx, storage.ListOptions{})
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package storage_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,7 +64,7 @@ func TestSQLiteStore_ListTasks(t *testing.T) {
 			t.Fatalf("CreateTask: %v", err)
 		}
 	}
-	all, err := store.ListTasks(ctx)
+	all, err := store.ListTasks(ctx, storage.ListOptions{})
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -110,6 +111,78 @@ func TestSQLiteStore_DeleteTask(t *testing.T) {
 	}
 	if _, err := store.GetTask(ctx, created.ID); err != storage.ErrNotFound {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestSQLiteStore_GetTask_NotFound(t *testing.T) {
+	db := newTestSQLiteDB(t)
+	store := storage.NewSQLiteStore(db)
+	ctx := context.Background()
+	_, err := store.GetTask(ctx, "00000000-0000-0000-0000-000000000099")
+	if err != storage.ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestSQLiteStore_UpdateTask_Title(t *testing.T) {
+	db := newTestSQLiteDB(t)
+	store := storage.NewSQLiteStore(db)
+	ctx := context.Background()
+	created, err := store.CreateTask(ctx, task.NewTaskInput{
+		Title:  "Before",
+		Status: task.StatusTodo,
+		DueAt:  time.Now().UTC().Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	newTitle := "After"
+	updated, err := store.UpdateTask(ctx, created.ID, &task.UpdateTaskInput{Title: &newTitle})
+	if err != nil {
+		t.Fatalf("UpdateTask: %v", err)
+	}
+	if updated.Title != "After" {
+		t.Fatalf("title: got %q", updated.Title)
+	}
+}
+
+func TestSQLiteMigrate_BlocksDestructiveLegacyDropByDefault(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(context.Background(), `CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL)`)
+	if err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+
+	err = storage.Migrate(context.Background(), db)
+	if err == nil {
+		t.Fatalf("expected migrate to fail without ALLOW_DESTRUCTIVE_MIGRATIONS")
+	}
+	if !strings.Contains(err.Error(), "ALLOW_DESTRUCTIVE_MIGRATIONS=true") {
+		t.Fatalf("expected explicit guidance in error, got: %v", err)
+	}
+}
+
+func TestSQLiteMigrate_AllowsDestructiveLegacyDrop_WhenExplicitlyEnabled(t *testing.T) {
+	t.Setenv("ALLOW_DESTRUCTIVE_MIGRATIONS", "true")
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(context.Background(), `CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL)`)
+	if err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+
+	if err := storage.Migrate(context.Background(), db); err != nil {
+		t.Fatalf("migrate with explicit destructive opt-in: %v", err)
 	}
 }
 

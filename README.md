@@ -17,134 +17,81 @@ A full-stack task management app for caseworkers: create, view, update, and dele
 
 ## Quick start
 
-### Option 1: Interactive script (recommended)
+### Interactive launcher (recommended)
 
 ```bash
 ./scripts/run.sh
 ```
 
-Choose **Run** → **SQLite** → **Local** (or **Docker**). Press Enter at prompts for defaults.
+This is the only command you need. It provides a guided menu for:
+- **Run**: start the app (API + frontend) locally or via Docker, with SQLite/Postgres/MariaDB/MongoDB
+- **Test**: run backend + frontend checks
+- **Storybook**: run the component library
+- **Build**: build Docker images
+- **Mobile**: Android/iOS workflows
 
-### Option 2: Manual (2 terminals)
-
-**Terminal 1 — API:**
-```bash
-cd backend && go run ./cmd/api
-```
-
-**Terminal 2 — Frontend:**
-```bash
-cd frontend && npm install && npm run dev
-```
-
-Then open **http://localhost:5173**. API runs at **http://localhost:8080**.
+Once running:
+- **Web UI**: `http://localhost:5173`
+- **API**: `http://localhost:8080`
 
 ---
 
-## Running with different databases
+## Requirements
 
-The **run script** supports all four databases; choose at the menu:
+- **Go** (backend)
+- **Bun** (frontend tooling) — install from [bun.sh](https://bun.sh)
+- **Docker** (optional) — required for Docker runs and for local Postgres/MariaDB/MongoDB in “Local” mode
+- **Android/iOS** (optional) — only if you use the Mobile menu
+
+---
+
+## Using `run.sh`
+
+`run.sh` is a menu-driven launcher. The main options are:
 
 ```bash
 ./scripts/run.sh
-# → Run → [SQLite | Postgres | MariaDB | MongoDB] → [Local | Docker]
 ```
 
-**Local + Postgres/MariaDB/MongoDB:** The script starts the DB in Docker and runs API + frontend on your machine.
+### Run (API + UI)
 
----
+- **Run → SQLite → Local**: quickest dev loop (no Docker required)
+- **Run → Postgres/MariaDB/MongoDB → Local**: DB runs in Docker; API + UI run on your machine
+- **Run → … → Docker**: full stack via Compose
 
-## Mobile (Android / iOS)
+Environment overrides (optional):
+- **`HTTP_PORT`**: API port (default 8080)
+- **`VITE_DEV_PORT`**: Vite dev server port (default 5173)
+- **`STORYBOOK_PORT`**: Storybook port (default 6006)
 
-**Prerequisites:** Node.js, Go, Java 17 or 21. For Android: [Android Studio](https://developer.android.com/studio) or use the script to install SDK. For iOS: [Xcode](https://developer.apple.com/xcode/) (macOS only).
+### Test
 
-**Quick run (Android emulator):**
-```bash
-./scripts/run-android.sh
-```
-Builds, tests, installs, and launches the app. Downloads Android SDK and creates an emulator on first run.
+- **Test** runs: backend tests + frontend check/test/build.
 
-**Quick run (iOS simulator, macOS only):**
-```bash
-./scripts/run-ios.sh
-```
+### Storybook
 
-Builds, tests, syncs Capacitor, and launches the app in the iOS Simulator.
+- **Storybook** builds and runs the component library locally.
 
-Optional local-only mode (no backend API; uses on-device SQLite):
-```bash
-./scripts/run-ios.sh --local-sqlite
-```
+### Mobile
 
-**Capacitor (manual):**
-```bash
-cd frontend
-npm run cap:sync
-npm run cap:android   # or cap:ios on macOS
-```
+Mobile workflows are available from the menu:
+- **Mobile → Android → Local**: run the app on an emulator/device
+- **Mobile → Android → Generate APK**: produce a debug APK (local SQLite mode)
 
-On device, point `VITE_API_BASE` to your API URL before building (e.g. `http://192.168.1.x:8080`).
-
-### Android APK with local on-device SQLite (no backend required)
-
-This project now supports a mobile-only data mode that stores tasks directly in a SQLite database on the phone.
-
-Build and optionally install the APK:
-
-```bash
-./scripts/build-android-local-sqlite.sh
-```
-
-What this does:
-- Runs frontend tests and type checks
-- Builds web assets with `VITE_MOBILE_LOCAL_DB=true`
-- Syncs Capacitor Android
-- Builds `frontend/android/app/build/outputs/apk/debug/app-debug.apk`
-- Installs and launches on a connected device if `adb` sees one
-
-SQLite DB location on Android (created on first launch):
-- `/data/data/uk.gov.caseworker.taskmanager/databases/taskmanagerSQLite.db`
-
-Notes:
-- This local SQLite mode is enabled only for native builds when `VITE_MOBILE_LOCAL_DB=true`.
-- Web/desktop behavior remains API-backed by default.
+The repo also contains helper scripts under `scripts/`, but `run.sh` is the supported entrypoint for day-to-day use.
 
 ---
 
 ## Testing
+
+Use the launcher:
 
 ```bash
 ./scripts/run.sh
 # → Test
 ```
 
-## Releases
-
-Android APK prereleases are built by the `Android Release` workflow:
-- Workflow file: `.github/workflows/android-release.yml`
-- Release name format: `gov-case-tracker-v1.x.x`
-- APK asset name format: `gov-case-tracker-android-v1.x.x.apk`
-- Release type: GitHub prerelease (pre-production)
-- Includes source archives (`.zip`/`.tar.gz`) automatically via GitHub Releases
-
-Trigger options:
-- Push a version tag in the format `v1.x.x` (must match `VERSION` file)
-- Run the workflow manually (`workflow_dispatch`), which auto-reads `VERSION` and uses `v<version>`
-
-iOS prerelease assets are built by the `iOS Release` workflow:
-- Workflow file: `.github/workflows/ios-release.yml`
-- App asset name format: `gov-case-tracker-ios-v1.x.x.app.zip` (simulator app bundle)
-- Release type: GitHub prerelease (pre-production)
-- Includes source archives (`.zip`/`.tar.gz`) automatically via GitHub Releases
-- Note: this iOS artifact is a simulator `.app` bundle (not an Android APK).
-
-## CI behavior
-
-- CI is split into separate workflows: `Web Build`, `Mobile Builds`, `DB smoke tests`, `Android Release`, `iOS Release`.
-- `Web Build`, `Mobile Builds`, and `DB smoke tests` run only when relevant files change (path-based triggers).
-- In `Mobile Builds`, Android and iOS jobs are independently guarded and only run when their platform-relevant files changed.
-- `DB smoke tests` keeps DB jobs dependent on backend tests within that workflow.
-- You can manually run `Web Build`, `Mobile Builds`, and `DB smoke tests` anytime via `workflow_dispatch` in GitHub Actions.
+If you prefer running pieces manually (for debugging or CI parity), see `backend/API.md` and `frontend/package.json` scripts.
 
 ## Web app
 

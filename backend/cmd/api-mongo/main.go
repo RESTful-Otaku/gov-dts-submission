@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	httpapi "github.com/j-m-harrison/dts-submission/internal/http"
@@ -55,8 +56,10 @@ func main() {
 		log.Fatalf("failed to ensure MongoDB indexes: %v", err)
 	}
 
-	if err := seed.DemoTasksStore(ctx, store); err != nil {
-		log.Fatalf("failed to seed demo tasks: %v", err)
+	if shouldSeedDemoData() {
+		if err := seed.DemoTasksStore(ctx, store); err != nil {
+			log.Fatalf("failed to seed demo tasks: %v", err)
+		}
 	}
 
 	apiServer := httpapi.NewServerWithStore(store, func(c context.Context) error {
@@ -101,5 +104,12 @@ func readEnvDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func shouldSeedDemoData() bool {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("SEED_DEMO_TASKS"))); v != "" {
+		return v == "1" || v == "true" || v == "yes"
+	}
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development")
 }
 

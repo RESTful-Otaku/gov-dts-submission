@@ -114,7 +114,7 @@ jobs:
 
       - name: Sync Capacitor
         working-directory: frontend
-        run: npx cap sync android
+        run: bunx cap sync android
 
       - name: Run Android unit tests
         working-directory: frontend/android
@@ -152,7 +152,7 @@ jobs:
 
       - name: Sync Capacitor
         working-directory: frontend
-        run: npx cap sync ios
+        run: bunx cap sync ios
 
       - name: Build iOS (simulator)
         working-directory: frontend/ios/App

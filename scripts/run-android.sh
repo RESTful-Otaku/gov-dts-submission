@@ -8,6 +8,47 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 source "$SCRIPT_DIR/lib.sh"
+
+ui_banner() {
+  if command -v gum >/dev/null 2>&1 && [[ -t 0 ]]; then
+    gum style \
+      --margin "1 0" \
+      --padding "1 3" \
+      --border rounded \
+      --border-foreground "111" \
+      --foreground "252" \
+      "🤖  Android local runner" \
+      "" \
+      "$(gum style --foreground "244" "Builds frontend for emulator, starts API, launches Android app.")"
+  else
+    print_section "Android local runner"
+  fi
+}
+
+run_quiet_step() {
+  local label="$1"
+  shift
+  local log_file
+  log_file="$(mktemp)"
+  start_spinner "$label..."
+  if "$@" >"$log_file" 2>&1; then
+    stop_spinner
+    ok "$label"
+    rm -f "$log_file"
+    return 0
+  fi
+  stop_spinner
+  fail "$label failed"
+  sed -n '1,180p' "$log_file" >&2 || true
+  rm -f "$log_file"
+  return 1
+}
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required for frontend builds (https://bun.sh)" >&2
+  exit 1
+fi
+
 # Default SDK location (standard); emulator uses 10.0.2.2 to reach host's localhost
 ANDROID_SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
 CMDLINE_URL="https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip"
@@ -17,6 +58,26 @@ API_PID=""
 # Use fixed port 8081 so the emulator app (built with 10.0.2.2:8081) matches the API
 EMULATOR_API_PORT=8081
 
+# AVD hardware profile: avdmanager list device. Empty = pick the newest Pixel phone profile available.
+# Example: EMULATOR_DEVICE=pixel_9
+EMULATOR_DEVICE="${EMULATOR_DEVICE:-}"
+
+# Optional *platform* skin only (has a layout file under platforms/*/skins/<name>). Examples: WXGA720, WVGA800.
+# Do not use Pixel names here — modern SDK "pixel_*" dirs are overlay APKs, not emulator skins, and break startup.
+EMULATOR_SKIN="${EMULATOR_SKIN:-}"
+
+# After install, if EMULATOR_DEVICE is missing from the catalog, run sdkmanager update once (needs network).
+ANDROID_AVD_REFRESH="${ANDROID_AVD_REFRESH:-1}"
+
+# Run sdkmanager on each invocation to ensure emulator, system image, and tools (needs network).
+ANDROID_SDK_ENSURE_PACKAGES="${ANDROID_SDK_ENSURE_PACKAGES:-1}"
+
+# Set to 1 to delete and recreate the AVD when changing EMULATOR_DEVICE or after SDK updates.
+FORCE_ANDROID_AVD_RECREATE="${FORCE_ANDROID_AVD_RECREATE:-0}"
+
+# Effective device id (set in setup_android_sdk)
+EMULATOR_DEVICE_EFFECTIVE=""
+
 cleanup() {
   if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
     echo "Stopping API server (pid=$API_PID)..."
@@ -24,7 +85,7 @@ cleanup() {
     wait "$API_PID" 2>/dev/null || true
   fi
 }
-trap cleanup INT TERM
+trap cleanup EXIT INT TERM
 
 sdkmanager_cmd() {
   local cmdline="$ANDROID_SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
@@ -46,21 +107,145 @@ avdmanager_cmd() {
   fi
 }
 
+avd_device_in_catalog() {
+  local id="$1"
+  [[ -n "$id" ]] || return 1
+  avdmanager_cmd list device 2>/dev/null | grep -qF "or \"${id}\""
+}
+
+# Print one line: device id to use for avdmanager create avd -d. Warns on stderr if falling back.
+resolve_avd_device_id() {
+  local requested="$1"
+  local d
+
+  if avd_device_in_catalog "$requested"; then
+    echo "$requested"
+    return 0
+  fi
+
+  if [[ "$ANDROID_AVD_REFRESH" != "0" ]]; then
+    echo "Device profile \"$requested\" not found; updating cmdline-tools and emulator (retry catalog)..." >&2
+    yes | sdkmanager_cmd "cmdline-tools;latest" "emulator" 2>/dev/null || true
+  fi
+
+  if avd_device_in_catalog "$requested"; then
+    echo "$requested"
+    return 0
+  fi
+
+  for d in \
+    pixel_10 pixel_10_pro pixel_10_pro_xl pixel_10_pro_fold \
+    pixel_9 pixel_9a pixel_9_pro pixel_9_pro_xl pixel_9_pro_fold \
+    pixel_8 pixel_8a pixel_8_pro \
+    pixel_7 pixel_7a pixel_7_pro; do
+    [[ "$d" == "$requested" ]] && continue
+    if avd_device_in_catalog "$d"; then
+      echo "Note: \"$requested\" is not in this SDK's device catalog; using \"$d\" for AVD hardware. Update cmdline-tools/emulator, set EMULATOR_DEVICE=$d, or use FORCE_ANDROID_AVD_RECREATE=1 if the AVD already exists." >&2
+      echo "$d"
+      return 0
+    fi
+  done
+
+  echo "Note: no Pixel device profile found; creating AVD without -d (generic)." >&2
+  echo ""
+}
+
+# Pick newest Pixel phone profile present in avdmanager, or resolve explicit EMULATOR_DEVICE.
+choose_emulator_device_profile() {
+  local requested="${EMULATOR_DEVICE:-}"
+  if [[ -n "$requested" ]]; then
+    resolve_avd_device_id "$requested"
+    return
+  fi
+  local id
+  for id in \
+    pixel_10_pro_xl pixel_10_pro pixel_10_pro_fold pixel_10 \
+    pixel_9_pro_xl pixel_9_pro pixel_9_pro_fold pixel_9 pixel_9a \
+    pixel_8_pro pixel_8 pixel_8a \
+    pixel_7_pro pixel_7 pixel_7a; do
+    if avd_device_in_catalog "$id"; then
+      echo "Auto-selected device profile: $id (set EMULATOR_DEVICE= to override)." >&2
+      echo "$id"
+      return 0
+    fi
+  done
+  resolve_avd_device_id "pixel_9"
+}
+
+# Pixel-style names in config.ini break current emulators; remove stale skin.* lines.
+strip_avd_config_ini_skin_lines() {
+  local avd_home="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+  local ini="${avd_home}/${AVD_NAME}.avd/config.ini"
+  [[ -f "$ini" ]] || return 0
+  if ! grep -qE '^skin\.(name|path)=' "$ini" 2>/dev/null; then
+    return 0
+  fi
+  echo "Removing stale skin.name/skin.path from AVD config (Pixel names are not valid emulator skins in current SDKs)."
+  grep -vE '^skin\.(name|path)=' "$ini" > "${ini}.tmp" && mv "${ini}.tmp" "$ini"
+}
+
+# Optional platform skin (must contain a layout file). Appends -skindir/-skin to emulator args.
+append_platform_skin_launch_args() {
+  local -n _emu_skin_ref=$1
+  local name="${EMULATOR_SKIN:-}"
+  [[ -z "$name" || "$name" == "none" ]] && return 0
+  local layout
+  layout="$(find "$ANDROID_SDK_DIR/platforms" -path "*/skins/${name}/layout" -type f 2>/dev/null | head -1)"
+  if [[ -z "$layout" ]]; then
+    echo "Warning: EMULATOR_SKIN=$name has no platforms/*/skins/$name/layout — ignoring." >&2
+    return 0
+  fi
+  local skin_folder
+  skin_folder="$(dirname "$layout")"
+  local skindir
+  skindir="$(dirname "$skin_folder")"
+  _emu_skin_ref+=(-skindir "$skindir" -skin "$name")
+}
+
+# Recreate AVD if the stored device profile no longer matches (marker or hw.device.name in config.ini).
+# Marker lives under ANDROID_AVD_HOME (not inside *.avd) so it survives avdmanager delete avd.
+sync_avd_with_device_profile() {
+  local want="$1"
+  local avd_home="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+  local avd_dir="${avd_home}/${AVD_NAME}.avd"
+  local ini="${avd_dir}/config.ini"
+  local marker="${avd_home}/.run_android_${AVD_NAME}_device"
+  local prev=""
+  [[ -f "$marker" ]] && prev="$(cat "$marker" 2>/dev/null || true)"
+  if [[ -z "$prev" && -f "$ini" ]]; then
+    prev="$(grep '^hw.device.name=' "$ini" 2>/dev/null | head -1 | cut -d= -f2 | tr -d '\r')"
+  fi
+  if [[ -n "$prev" && "$prev" != "$want" ]]; then
+    echo "AVD was created for device=$prev; current profile is $want — recreating AVD..."
+    avdmanager_cmd delete avd -n "$AVD_NAME" 2>/dev/null || true
+  fi
+  mkdir -p "$avd_home" 2>/dev/null || true
+  echo "$want" > "$marker"
+}
+
 setup_android_sdk() {
+  local need_sdk_install=0
+
+  if [[ -d "$HOME/.config/.android/avd" ]] && [[ -d "$HOME/.config/.android/avd/${AVD_NAME}.avd" ]]; then
+    export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
+  fi
+
   if [[ -n "${ANDROID_HOME:-}" ]] && command -v adb &>/dev/null && command -v emulator &>/dev/null; then
     echo "Android SDK found at ANDROID_HOME=$ANDROID_HOME"
-    return 0
+    ANDROID_SDK_DIR="$ANDROID_HOME"
+  else
+    export ANDROID_HOME="$ANDROID_SDK_DIR"
+    export ANDROID_SDK_ROOT="$ANDROID_SDK_DIR"
+    export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
+    if command -v adb &>/dev/null && command -v emulator &>/dev/null; then
+      echo "Android SDK tools found in PATH"
+    else
+      need_sdk_install=1
+    fi
   fi
 
-  export ANDROID_HOME="$ANDROID_SDK_DIR"
-  export ANDROID_SDK_ROOT="$ANDROID_SDK_DIR"
-  export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-
-  if command -v adb &>/dev/null && command -v emulator &>/dev/null; then
-    echo "Android SDK tools found in PATH"
-    return 0
-  fi
-
+  if [[ "$need_sdk_install" -eq 1 ]]; then
   print_section "Installing Android SDK"
 
   if [[ ! -x "$ANDROID_SDK_DIR/cmdline-tools/latest/bin/sdkmanager" ]] && [[ ! -x "$ANDROID_SDK_DIR/cmdline-tools/bin/sdkmanager" ]]; then
@@ -83,51 +268,76 @@ setup_android_sdk() {
     rm -rf "$tmpdir"
   fi
 
-  export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+  export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 
   echo "Accepting SDK licenses..."
   yes | sdkmanager_cmd --licenses 2>/dev/null || true
 
   echo "Installing platform-tools, emulator, platform, and system image..."
   sdkmanager_cmd "platform-tools" "emulator" "platforms;android-36" "build-tools;36.0.0" "system-images;android-36;google_apis;x86_64"
+  fi
+
+  export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_DIR}"
+  export ANDROID_SDK_DIR="$ANDROID_HOME"
+  export ANDROID_SDK_ROOT="$ANDROID_HOME"
+  export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
+  if [[ "${ANDROID_SDK_ENSURE_PACKAGES:-1}" != "0" ]]; then
+    echo "Ensuring SDK packages (cmdline-tools, emulator, API 36, Google APIs image)..."
+    yes | sdkmanager_cmd "cmdline-tools;latest" "platform-tools" "emulator" "platforms;android-36" "build-tools;36.0.0" "system-images;android-36;google_apis;x86_64" 2>/dev/null || true
+  fi
+
+  EMULATOR_DEVICE_EFFECTIVE="$(choose_emulator_device_profile)"
+
+  if [[ "${FORCE_ANDROID_AVD_RECREATE:-0}" == "1" ]] && avdmanager_cmd list avd 2>/dev/null | grep -q "$AVD_NAME"; then
+    echo "Deleting existing AVD $AVD_NAME (FORCE_ANDROID_AVD_RECREATE=1)..."
+    avdmanager_cmd delete avd -n "$AVD_NAME" 2>/dev/null || true
+  fi
+
+  sync_avd_with_device_profile "$EMULATOR_DEVICE_EFFECTIVE"
 
   if ! avdmanager_cmd list avd 2>/dev/null | grep -q "$AVD_NAME"; then
-    echo "Creating AVD: $AVD_NAME"
-    echo "no" | avdmanager_cmd create avd -n "$AVD_NAME" -k "system-images;android-36;google_apis;x86_64" -d "pixel_7" 2>/dev/null || \
+    echo "Creating AVD: $AVD_NAME (device=${EMULATOR_DEVICE_EFFECTIVE:-generic})"
+    if [[ -n "$EMULATOR_DEVICE_EFFECTIVE" ]]; then
+      echo "no" | avdmanager_cmd create avd -n "$AVD_NAME" -k "system-images;android-36;google_apis;x86_64" -d "$EMULATOR_DEVICE_EFFECTIVE" 2>/dev/null || \
+        echo "no" | avdmanager_cmd create avd -n "$AVD_NAME" -k "system-images;android-36;google_apis;x86_64"
+    else
       echo "no" | avdmanager_cmd create avd -n "$AVD_NAME" -k "system-images;android-36;google_apis;x86_64"
+    fi
   fi
 }
 
 run_tests() {
   print_section "Backend: tests"
-  (cd "$BACKEND" && go test -v ./...)
+  run_quiet_step "Running backend tests" bash -c "cd \"$BACKEND\" && go test -v ./..."
 
-  print_section "Frontend: check and build"
-  (cd "$FRONTEND" && npm ci 2>/dev/null || npm install)
-  (cd "$FRONTEND" && npm run check && npm run build)
+  print_section "Frontend: check, test and build"
+  run_quiet_step "Installing frontend dependencies" \
+    bash -c "cd \"$FRONTEND\" && bun install --frozen-lockfile 2>/dev/null || bun install"
+  run_quiet_step "Frontend check, test and build" \
+    bash -c "cd \"$FRONTEND\" && bun run check && bun run test && bun run build"
 }
 
 run_full_stack() {
   local port=$EMULATOR_API_PORT
-  if (echo >/dev/tcp/127.0.0.1/"$port") 2>/dev/null; then
-    echo "Port $port is in use. Stop the process using it, or run: lsof -i :$port"
-    exit 1
-  fi
+  ensure_tcp_port_free "$port" "API (backend for Android emulator)" || exit 1
   API_URL_EMULATOR="http://10.0.2.2:$port"
 
   print_section "Backend: starting API on :$port"
   (cd "$BACKEND" && HTTP_PORT="$port" go run ./cmd/api) &
   API_PID=$!
-  sleep 3
   if ! kill -0 "$API_PID" 2>/dev/null; then
     echo "API failed to start (port $port may be in use)."
     exit 1
   fi
+  wait_for_api_ready "http://127.0.0.1:${port}" 90 "Android API" || exit 1
   echo "API running at http://localhost:$port (emulator will use $API_URL_EMULATOR)"
 
   print_section "Frontend: build for emulator (API=$API_URL_EMULATOR)"
-  (cd "$FRONTEND" && VITE_API_BASE="$API_URL_EMULATOR" npm run build)
-  (cd "$FRONTEND" && npx cap sync)
+  run_quiet_step "Building frontend web assets" \
+    bash -c "cd \"$FRONTEND\" && VITE_API_BASE=\"$API_URL_EMULATOR\" bun run build"
+  run_quiet_step "Syncing Capacitor Android project" \
+    bash -c "cd \"$FRONTEND\" && bunx cap sync"
 
   print_section "Android: launching emulator and app"
   export ANDROID_HOME="$ANDROID_SDK_DIR"
@@ -138,10 +348,14 @@ run_full_stack() {
     export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
   fi
 
+  strip_avd_config_ini_skin_lines
+
   # Start emulator in background if not already running
   if ! adb devices 2>/dev/null | grep -q emulator; then
     echo "Starting emulator (this may take 1–2 minutes on first boot)..."
-    emulator -avd "$AVD_NAME" -no-snapshot-load -no-metrics &
+    local -a emu_args=(emulator -avd "$AVD_NAME" -no-snapshot-load -no-metrics)
+    append_platform_skin_launch_args emu_args
+    "${emu_args[@]}" &
     local emu_pid=$!
     echo "Waiting for emulator to boot..."
     adb wait-for-device
@@ -194,6 +408,7 @@ find_java17_or_21() {
 }
 
 main() {
+  ui_banner
   # Handle --install-java first
   if [[ "${1:-}" == "--install-java" ]]; then
     print_section "Installing Java 17"

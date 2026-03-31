@@ -60,7 +60,7 @@ func TestMariaDBStore_CRUD(t *testing.T) {
 		t.Fatalf("round-trip mismatch: got %+v", fetched)
 	}
 
-	all, err := store.ListTasks(ctx)
+	all, err := store.ListTasks(ctx, storage.ListOptions{})
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}

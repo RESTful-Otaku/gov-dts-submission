@@ -1,0 +1,46 @@
+/* Narrow viewports: create/edit as full-screen drawer; delete modal inset. */
+
+@media (max-width: 640px) {
+  .modal-backdrop--drawer {
+    padding: 0;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .modal--drawer {
+    position: relative;
+    max-width: none;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    /* Backdrop is flush; insets keep header & chrome below status bar / Dynamic Island. */
+    padding-top: calc(constant(safe-area-inset-top) + 0.5rem);
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+    padding-bottom: calc(constant(safe-area-inset-bottom) + 0.5rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+    box-sizing: border-box;
+  }
+
+  .modal--drawer .task-form,
+  .modal--drawer .modal-header {
+    flex-shrink: 0;
+  }
+
+  .modal--drawer .task-form {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .modal-backdrop .modal.modal--delete {
+    max-width: calc(100vw - 1.5rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    margin-top: max(1rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));
+    margin-right: max(1rem, env(safe-area-inset-right, 0px));
+    margin-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    margin-left: max(1rem, env(safe-area-inset-left, 0px));
+  }
+}

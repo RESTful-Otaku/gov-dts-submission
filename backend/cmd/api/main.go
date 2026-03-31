@@ -34,7 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	apiServer := httpapi.NewServer(db)
+	apiServer := httpapi.NewServerWithDriver(db, cfg.DBDriver)
 	mux := http.NewServeMux()
 	apiServer.RegisterRoutes(mux)
 

@@ -60,7 +60,7 @@ describe('api', () => {
       })
       const result = await api.listTasks()
       expect(result).toEqual(tasks)
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/tasks$/), expect.any(Object))
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/tasks\?limit=200&offset=0$/), expect.any(Object))
     })
   })
 
@@ -114,6 +114,75 @@ describe('api', () => {
         expect.stringMatching(/\/api\/tasks\/id1$/),
         expect.objectContaining({ method: 'DELETE' })
       )
+    })
+  })
+
+  describe('updateTask', () => {
+    it('sends PUT with partial payload', async () => {
+      api = await import('../src/lib/api')
+      const updated = {
+        id: 'id1',
+        title: 'Renamed',
+        status: 'todo' as const,
+        dueAt: '',
+        createdAt: '',
+        updatedAt: '',
+      }
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(updated),
+      })
+      const result = await api.updateTask('id1', { title: 'Renamed' })
+      expect(result.title).toBe('Renamed')
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/tasks\/id1$/),
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ title: 'Renamed' }),
+        }),
+      )
+    })
+  })
+
+  describe('request error handling', () => {
+    it('uses JSON error body when present', async () => {
+      api = await import('../src/lib/api')
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: () => Promise.resolve({ error: 'Unprocessable' }),
+      })
+      await expect(api.listTasks()).rejects.toMatchObject({
+        message: 'Unprocessable',
+        status: 422,
+      })
+    })
+
+    it('falls back to generic message when JSON is not an object', async () => {
+      api = await import('../src/lib/api')
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve(null),
+      })
+      await expect(api.listTasks()).rejects.toMatchObject({
+        message: 'Request failed with status 500',
+        status: 500,
+      })
+    })
+
+    it('falls back when response body is invalid JSON', async () => {
+      api = await import('../src/lib/api')
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new SyntaxError('bad json')),
+      })
+      await expect(api.listTasks()).rejects.toMatchObject({
+        message: 'Request failed with status 502',
+        status: 502,
+      })
     })
   })
 

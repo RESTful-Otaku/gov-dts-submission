@@ -1,0 +1,74 @@
+/* Read-only task viewer: same shell as create/edit modals; tweaks for badges + readonly fields. */
+
+.task-readonly-form .task-readonly-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.task-readonly-form .task-readonly-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  box-sizing: border-box;
+}
+
+.task-readonly-form .task-readonly-value {
+  margin: 0;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.task-readonly-form .task-readonly-value--title {
+  font-weight: 600;
+}
+
+.task-readonly-form .task-readonly-value--multiline {
+  white-space: pre-wrap;
+}
+
+/* Edit/Delete: one row, equal width (overrides mobile .form-actions button { width: 100% }). */
+.task-readonly-form .form-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+}
+
+.task-readonly-form .form-actions .task-actions {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  width: 100%;
+  gap: 0.75rem;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.task-readonly-form .form-actions .btn-icon-compact {
+  flex: 1 1 50%;
+  min-width: 0;
+  width: auto;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  /* Enforce safe-area insets for reader chrome/content on all mobile widths. */
+  .modal.modal--reader {
+    padding-top: max(1rem, calc(env(safe-area-inset-top, 0px) + 0.65rem));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    padding-bottom: max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem));
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+  }
+
+  .modal.modal--reader .task-readonly-form {
+    padding-bottom: max(0.9rem, calc(env(safe-area-inset-bottom, 0px) + 0.9rem));
+    box-sizing: border-box;
+  }
+}

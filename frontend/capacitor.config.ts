@@ -10,6 +10,14 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true, // allow HTTP API requests from capacitor:// page
   },
+  // @capacitor-community/sqlite defaults androidIsEncryption to true and builds MasterKey +
+  // EncryptedSharedPreferences on load(). That fails on many devices (null getMessage() →
+  // "CapacitorSQLitePlugin: null"). We use no-encryption DB mode in JS; disable native encryption.
+  plugins: {
+    CapacitorSQLite: {
+      androidIsEncryption: false,
+    },
+  },
 }
 
 export default config

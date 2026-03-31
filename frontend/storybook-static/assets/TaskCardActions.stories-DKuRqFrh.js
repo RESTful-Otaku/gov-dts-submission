@@ -1,0 +1,5 @@
+import{T as m}from"./TaskCardActions--b-Uf1Nm.js";import"./iframe-BS14FNgM.js";import"./preload-helper-Dp1pzeXC.js";import"./legacy-zriNtcXh.js";import"./attributes-DDbB5mMF.js";import"./class-DvJjGPJo.js";import"./select-1qCOMaYV.js";import"./event-modifiers-Bfc47y5P.js";import"./lifecycle-BlS2fuCw.js";const{fn:r}=__STORYBOOK_MODULE_TEST__,D={title:"Tasks/TaskCardActions",component:m,args:{stopPropagation:!1,onEdit:r(),onDelete:r(),deleteTitle:"Delete task"}},o={},t={args:{stopPropagation:!0}};var a,e,s;o.parameters={...o.parameters,docs:{...(a=o.parameters)==null?void 0:a.docs,source:{originalSource:"{}",...(s=(e=o.parameters)==null?void 0:e.docs)==null?void 0:s.source}}};var p,n,i;t.parameters={...t.parameters,docs:{...(p=t.parameters)==null?void 0:p.docs,source:{originalSource:`{
+  args: {
+    stopPropagation: true
+  }
+}`,...(i=(n=t.parameters)==null?void 0:n.docs)==null?void 0:i.source}}};const O=["Default","StopPropagation"];export{o as Default,t as StopPropagation,O as __namedExportsOrder,D as default};

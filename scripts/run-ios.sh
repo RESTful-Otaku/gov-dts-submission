@@ -11,10 +11,11 @@ FRONTEND="$ROOT/frontend"
 
 source "$SCRIPT_DIR/lib.sh"
 
-PM="npm"
-if command -v bun >/dev/null 2>&1; then
-  PM="bun"
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required for frontend builds (https://bun.sh)" >&2
+  exit 1
 fi
+PM="bun"
 
 ensure_macos_and_xcode() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -39,7 +40,7 @@ cleanup() {
     wait "$API_PID" 2>/dev/null || true
   fi
 }
-trap cleanup INT TERM
+trap cleanup EXIT INT TERM
 
 usage() {
   cat >&2 <<'EOF'
@@ -85,13 +86,8 @@ run_tests() {
   (cd "$BACKEND" && go test -v ./...)
 
   print_section "Frontend: check and build"
-  if [[ "$PM" == "bun" ]]; then
-    (cd "$FRONTEND" && bun install >/dev/null 2>&1 || true)
-    (cd "$FRONTEND" && bun run check && bun run build)
-  else
-    (cd "$FRONTEND" && npm ci 2>/dev/null || npm install)
-    (cd "$FRONTEND" && npm run check && npm run build)
-  fi
+  (cd "$FRONTEND" && bun install --frozen-lockfile >/dev/null 2>&1 || bun install >/dev/null 2>&1 || true)
+  (cd "$FRONTEND" && bun run check && bun run test && bun run build)
 }
 
 build_web_assets() {
@@ -106,24 +102,29 @@ build_web_assets() {
 
 run_cap_sync() {
   print_section "Capacitor: sync iOS"
-  (cd "$FRONTEND" && npx cap sync ios)
+  (cd "$FRONTEND" && bunx cap sync ios)
 }
 
 run_ios_simulator() {
   print_section "iOS: launching simulator app"
   # `cap run ios` will build and install; if the app is already present it will reinstall.
-  (cd "$FRONTEND" && npx cap run ios)
+  (cd "$FRONTEND" && bunx cap run ios)
 }
 
 start_backend_api() {
+  ensure_api_listen_port_for_run "$API_PORT" "API (backend for iOS)" || exit 1
+  if [[ "${GOV_DTS_REUSE_API_ON_PORT:-0}" == "1" ]]; then
+    ok "Using existing API at ${API_BASE_URL}"
+    return 0
+  fi
   print_section "Backend: starting API on :$API_PORT"
   (cd "$BACKEND" && HTTP_PORT="$API_PORT" go run ./cmd/api) &
   API_PID=$!
-  sleep 3
   if ! kill -0 "$API_PID" 2>/dev/null; then
     fail "API failed to start (port $API_PORT may be in use)."
     exit 1
   fi
+  wait_for_api_ready "http://127.0.0.1:${API_PORT}" 90 "iOS API" || exit 1
   ok "API running at ${API_BASE_URL}"
 }
 

@@ -11,6 +11,9 @@ backend/api
 node_modules/
 dist/
 *.local
+playwright-report/
+test-results/
+blob-report/
 
 # Capacitor / mobile platform build artifacts
 frontend/android/.gradle/

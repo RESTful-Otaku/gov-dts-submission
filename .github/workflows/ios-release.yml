@@ -84,7 +84,7 @@ jobs:
 
       - name: Sync Capacitor iOS
         working-directory: frontend
-        run: npx cap sync ios
+        run: bunx cap sync ios
 
       - name: Build iOS simulator app
         working-directory: frontend/ios/App

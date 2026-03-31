@@ -53,6 +53,26 @@ paths:
     get:
       summary: List all tasks
       operationId: listTasks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Number of tasks to return.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of tasks to skip before returning results.
       responses:
         "200":
           description: List of tasks ordered by due date
@@ -64,9 +84,21 @@ paths:
                   $ref: "#/components/schemas/Task"
         "500":
           $ref: "#/components/responses/InternalError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          description: Invalid pagination parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/AuthNotConfigured"
     post:
       summary: Create a task
       operationId: createTask
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -88,6 +120,10 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthNotConfigured"
 
   /api/tasks/{id}:
     parameters:
@@ -101,6 +137,8 @@ paths:
     get:
       summary: Get a task by ID
       operationId: getTask
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Task found
@@ -122,9 +160,15 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthNotConfigured"
     patch:
       summary: Update task status
       operationId: updateTaskStatus
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -152,9 +196,51 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthNotConfigured"
+    put:
+      summary: Update task fields
+      operationId: updateTask
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskRequest"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthNotConfigured"
     delete:
       summary: Delete a task
       operationId: deleteTask
+      security:
+        - bearerAuth: []
       responses:
         "204":
           description: Task deleted
@@ -166,6 +252,10 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthNotConfigured"
 
 components:
   schemas:
@@ -201,6 +291,15 @@ components:
         status:
           type: string
           enum: [todo, in_progress, done]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        owner:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
         dueAt:
           type: string
           format: date-time
@@ -227,10 +326,38 @@ components:
         status:
           type: string
           enum: [todo, in_progress, done]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        owner:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
         dueAt:
           type: string
           format: date-time
           description: RFC3339; must be in the future
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [todo, in_progress, done]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        tags:
+          type: array
+          items:
+            type: string
 
     UpdateStatusRequest:
       type: object
@@ -255,4 +382,21 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    AuthNotConfigured:
+      description: API auth is required but API_AUTH_TOKEN is not configured
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
 

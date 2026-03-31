@@ -27,6 +27,9 @@ func MigratePostgres(ctx context.Context, db *sql.DB) error {
 	var dataType string
 	row := db.QueryRowContext(ctx, "SELECT data_type FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='tasks' AND column_name='id'")
 	if err := row.Scan(&dataType); err == nil && dataType == "bigint" {
+		if !allowDestructiveMigrations() {
+			return destructiveMigrationBlockedError("postgres")
+		}
 		if _, err := db.ExecContext(ctx, "DROP TABLE tasks"); err != nil {
 			return err
 		}
@@ -106,11 +109,19 @@ func (s *PostgresStore) GetTask(ctx context.Context, id string) (*task.Task, err
 	return &t, nil
 }
 
-func (s *PostgresStore) ListTasks(ctx context.Context) ([]*task.Task, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *PostgresStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.Task, error) {
+	q := `
 		SELECT id, title, description, status, priority, owner, tags, due_at, created_at, updated_at
 		FROM tasks ORDER BY due_at ASC, id ASC
-	`)
+	`
+	var rows *sql.Rows
+	var err error
+	if opts.Limit > 0 {
+		q += " LIMIT $1 OFFSET $2"
+		rows, err = s.db.QueryContext(ctx, q, opts.Limit, max(0, opts.Offset))
+	} else {
+		rows, err = s.db.QueryContext(ctx, q)
+	}
 	if err != nil {
 		return nil, err
 	}

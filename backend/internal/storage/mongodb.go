@@ -159,11 +159,15 @@ func (s *MongoStore) GetTask(ctx context.Context, id string) (*task.Task, error)
 	return doc.toDomain(), nil
 }
 
-func (s *MongoStore) ListTasks(ctx context.Context) ([]*task.Task, error) {
+func (s *MongoStore) ListTasks(ctx context.Context, listOpts ListOptions) ([]*task.Task, error) {
 	opts := options.Find().SetSort(bson.D{
 		{Key: "dueAt", Value: 1},
 		{Key: "id", Value: 1},
 	})
+	if listOpts.Limit > 0 {
+		opts.SetLimit(int64(listOpts.Limit))
+		opts.SetSkip(int64(max(0, listOpts.Offset)))
+	}
 	cur, err := s.collection.Find(ctx, bson.D{}, opts)
 	if err != nil {
 		return nil, err

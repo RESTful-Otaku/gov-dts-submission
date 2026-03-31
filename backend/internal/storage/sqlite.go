@@ -25,6 +25,9 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	var idType string
 	row := db.QueryRowContext(ctx, "SELECT type FROM pragma_table_info('tasks') WHERE name='id'")
 	if err := row.Scan(&idType); err == nil && idType == "INTEGER" {
+		if !allowDestructiveMigrations() {
+			return destructiveMigrationBlockedError("sqlite")
+		}
 		if _, err := db.ExecContext(ctx, "DROP TABLE tasks"); err != nil {
 			return err
 		}
@@ -104,11 +107,19 @@ func (s *SQLiteStore) GetTask(ctx context.Context, id string) (*task.Task, error
 	return &t, nil
 }
 
-func (s *SQLiteStore) ListTasks(ctx context.Context) ([]*task.Task, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *SQLiteStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.Task, error) {
+	q := `
 		SELECT id, title, description, status, priority, owner, tags, due_at, created_at, updated_at
 		FROM tasks ORDER BY due_at ASC, id ASC
-	`)
+	`
+	var rows *sql.Rows
+	var err error
+	if opts.Limit > 0 {
+		q += " LIMIT ? OFFSET ?"
+		rows, err = s.db.QueryContext(ctx, q, opts.Limit, max(0, opts.Offset))
+	} else {
+		rows, err = s.db.QueryContext(ctx, q)
+	}
 	if err != nil {
 		return nil, err
 	}
