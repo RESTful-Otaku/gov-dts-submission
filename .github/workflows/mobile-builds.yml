@@ -131,6 +131,8 @@ jobs:
     if: needs.changes.outputs.ios == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -150,17 +152,49 @@ jobs:
         working-directory: frontend
         run: bun run build
 
-      - name: Sync Capacitor
+      - name: Sync Capacitor iOS
         working-directory: frontend
         run: bunx cap sync ios
 
-      - name: Install CocoaPods (iOS plugins)
-        working-directory: frontend/ios/App
-        run: pod install
+      # ✅ Ensure CocoaPods repo is up-to-date
+      - name: Update CocoaPods repos
+        run: pod repo update
 
-      - name: Build iOS (simulator)
+      # ✅ Deterministic pod install
+      - name: Install CocoaPods dependencies deterministically
+        working-directory: frontend/ios/App
+        run: pod install --deployment --verbose
+
+      # ✅ Verify Podfile.lock is committed and in sync
+      - name: Verify Podfile.lock is committed
         working-directory: frontend/ios/App
         run: |
-          xcodebuild -workspace App.xcworkspace -scheme App \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+          if [ ! -f Podfile.lock ]; then
+            echo "❌ Podfile.lock is missing. Commit it first."
+            exit 1
+          fi
+          if ! git diff --exit-code Podfile.lock; then
+            echo "❌ Podfile.lock is out of date. Run 'pod install' locally and commit changes."
+            exit 1
+          fi
+
+      # ✅ Clean build first to avoid stale derived data issues
+      - name: Clean Xcode build
+        working-directory: frontend/ios/App
+        run: |
+          xcodebuild clean -workspace App.xcworkspace -scheme App \
+            -configuration Debug -sdk iphonesimulator \
+            -derivedDataPath build
+
+      # ✅ Build iOS simulator app
+      - name: Build iOS simulator
+        working-directory: frontend/ios/App
+        run: |
+          xcodebuild build -workspace App.xcworkspace -scheme App \
+            -configuration Debug -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            SKIP_INSTALL=YES
