@@ -17,6 +17,8 @@ DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorCommunitySqlite (from `../../node_modules/@capacitor-community/sqlite`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - SQLCipher (~> 4.10)
+  - ZIPFoundation (~> 0.9.20)
 
 SPEC REPOS:
   trunk:
@@ -38,6 +40,6 @@ SPEC CHECKSUMS:
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
   ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: 72f87ec1d901979f64919a6a86e3259c77df709a
+PODFILE CHECKSUM: 0ab56cf2cda33780c032ecbc1ee0dd0005304a1b
 
 COCOAPODS: 1.16.2

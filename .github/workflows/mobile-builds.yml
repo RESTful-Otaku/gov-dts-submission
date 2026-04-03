@@ -163,4 +163,7 @@ jobs:
         run: |
           xcodebuild -workspace App.xcworkspace -scheme App \
             -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            -configuration Debug build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            PODS_PODFILE_DIR_PATH="$(pwd)"
