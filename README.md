@@ -8,8 +8,8 @@
 [![iOS Release](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/ios-release.yml/badge.svg)](https://github.com/RESTful-Otaku/gov-dts-submission/actions/workflows/ios-release.yml)
 
 ## Appetize Demos
-* [![iOS](https://appetize.io/app/ag_skelbdgqw4hv7ld2uk5dxh64n4)
-* [![Android](https://appetize.io/app/ag_wnsknf4kflyho5bwwj4q57rrjy)
+* ![iOS](https://appetize.io/app/ag_skelbdgqw4hv7ld2uk5dxh64n4)
+* ![Android](https://appetize.io/app/ag_wnsknf4kflyho5bwwj4q57rrjy)
 
 A full-stack task management app for caseworkers: create, view, update, and delete tasks via a web UI or mobile app. Backend in Go, frontend in Svelte, with SQLite, PostgreSQL, MariaDB or MongoDB.
 
