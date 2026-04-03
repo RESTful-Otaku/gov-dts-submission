@@ -196,6 +196,6 @@ jobs:
           -xcconfig ../debug.xcconfig \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO \
-          ONLY_ACTIVE_ARCH=YES \
+      CODE_SIGNING_ALLOWED=NO \
+      ONLY_ACTIVE_ARCH=YES \
       SKIP_INSTALL=YES
