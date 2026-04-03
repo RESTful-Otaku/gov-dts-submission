@@ -1,5 +1,5 @@
 platform :ios, '15.0'
-use_frameworks!
+use_frameworks! :linkage => :static
 
 # CocoaPods integration for Capacitor + community plugins.
 # This is required for plugins that don't ship SwiftPM packages (e.g. @capacitor-community/sqlite).
