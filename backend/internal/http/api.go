@@ -194,7 +194,9 @@ func InitDatabase(ctx context.Context, dataDir string, cfg *config.AppConfig) (*
 		return nil, fmt.Errorf("unsupported DB_DRIVER %q", driver)
 	}
 
-	if shouldSeedDemoData() {
+	if shouldSeedDemoDataWithConfig(cfg) {
+		logger.Info("🌱 seeding SQL database (driver=%s)", driver)
+
 		if err := seed.DemoTasksWithDriver(ctx, db, driver); err != nil {
 			_ = db.Close()
 			return nil, err
@@ -203,11 +205,18 @@ func InitDatabase(ctx context.Context, dataDir string, cfg *config.AppConfig) (*
 	return db, nil
 }
 
-func shouldSeedDemoData() bool {
+func shouldSeedDemoDataWithConfig(cfg *config.AppConfig) bool {
+	// Explicit override always wins
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("SEED_DEMO_TASKS"))); v != "" {
 		return v == "1" || v == "true" || v == "yes"
 	}
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development")
+
+	// Fall back to config (NOT env)
+	if cfg != nil {
+		return strings.EqualFold(strings.TrimSpace(cfg.Env), "development")
+	}
+
+	return false
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

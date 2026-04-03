@@ -11,6 +11,7 @@ import (
 	"time"
 
 	httpapi "github.com/j-m-harrison/dts-submission/internal/http"
+	"github.com/j-m-harrison/dts-submission/internal/config"
 	"github.com/j-m-harrison/dts-submission/internal/logger"
 	"github.com/j-m-harrison/dts-submission/internal/seed"
 	"github.com/j-m-harrison/dts-submission/internal/storage"
@@ -19,13 +20,15 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// This command is an alternative entrypoint that runs the API backed by MongoDB
-// instead of a relational database. It exists alongside the default api
-// command to demonstrate a non-SQL persistence implementation without
-// changing the existing binaries or deployment model.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
+	// ✅ Load config (single source of truth)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
@@ -44,6 +47,7 @@ func main() {
 	defer func() {
 		_ = client.Disconnect(context.Background())
 	}()
+
 	if err := client.Ping(ctx, nil); err != nil {
 		log.Fatalf("failed to ping MongoDB: %v", err)
 	}
@@ -52,11 +56,15 @@ func main() {
 		DatabaseName:   mongoDB,
 		CollectionName: "tasks",
 	})
+
 	if err := storage.EnsureMongoIndexes(ctx, store); err != nil {
 		log.Fatalf("failed to ensure MongoDB indexes: %v", err)
 	}
 
-	if shouldSeedDemoData() {
+	// ✅ Config-driven seeding (fixed)
+	if shouldSeedDemoDataWithConfig(cfg) {
+		logger.Info("🌱 seeding MongoDB database")
+
 		if err := seed.DemoTasksStore(ctx, store); err != nil {
 			log.Fatalf("failed to seed demo tasks: %v", err)
 		}
@@ -81,12 +89,14 @@ func main() {
 	logger.Info("🚀 MongoDB API server listening on %s (uri=%s db=%s)", addr, mongoURI, mongoDB)
 
 	var g errgroup.Group
+
 	g.Go(func() error {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			return err
 		}
 		return nil
 	})
+
 	g.Go(func() error {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -106,10 +116,13 @@ func readEnvDefault(key, def string) string {
 	return def
 }
 
-func shouldSeedDemoData() bool {
+// ✅ Unified seeding logic (config-first, env override)
+func shouldSeedDemoDataWithConfig(cfg *config.AppConfig) bool {
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("SEED_DEMO_TASKS"))); v != "" {
 		return v == "1" || v == "true" || v == "yes"
 	}
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development")
+	if cfg != nil {
+		return strings.EqualFold(strings.TrimSpace(cfg.Env), "development")
+	}
+	return false
 }
-
