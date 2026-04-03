@@ -1,26 +1,33 @@
+# ios/Podfile
+
 platform :ios, '15.0'
 use_frameworks! :linkage => :static
+use_modular_headers!
 
-# CocoaPods integration for Capacitor + community plugins.
-# This is required for plugins that don't ship SwiftPM packages (e.g. @capacitor-community/sqlite).
-
-def capacitor_pods
-  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-end
+# Prevent warnings in CI/CD
+inhibit_all_warnings!
 
 target 'App' do
-  capacitor_pods
+  # Capacitor core
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
 
-  # SQLite plugin (iOS implementation via CocoaPods)
+  # SQLite plugin
   pod 'CapacitorCommunitySqlite', :path => '../../node_modules/@capacitor-community/sqlite'
+
+  # Ensure SQLCipher dependency is pulled correctly
+  pod 'SQLCipher', '~> 4.10'
+
+  # Optional: ZIPFoundation for SQLite plugin
+  pod 'ZIPFoundation', '~> 0.9.20'
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
+    # Avoid architectures issues on Apple Silicon + CI
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+      config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
     end
   end
 end
-
