@@ -191,10 +191,11 @@ jobs:
         working-directory: frontend/ios/App
         run: |
           xcodebuild build -workspace App.xcworkspace -scheme App \
-            -configuration Debug -sdk iphonesimulator \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            SKIP_INSTALL=YES
+          -configuration Debug -sdk iphonesimulator \
+          -derivedDataPath build \
+          -xcconfig ../debug.xcconfig \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=YES \
+          SKIP_INSTALL=YES
