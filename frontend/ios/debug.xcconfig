@@ -1,5 +1,2 @@
-// Merge CocoaPods settings (PODS_ROOT, headers, linker flags). Required for Debug: without this,
-// [CP] Check Pods Manifest.lock sees an empty PODS_ROOT and looks for /Manifest.lock.
-#include? "App/Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"
-
+// Legacy file kept for reference. Xcode Debug builds use App/App.debug.xcconfig (includes Pods).
 CAPACITOR_DEBUG = true
