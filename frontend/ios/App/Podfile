@@ -30,4 +30,28 @@ post_install do |installer|
       config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
     end
   end
+
+  # Capacitor’s App.xcodeproj often has no PBXTargetDependency on Pods-App. CLI / CI then builds only
+  # the App target (“Target dependency graph (1 target)”), so Swift runs before Capacitor exists.
+  require 'xcodeproj'
+
+  app_project_path = File.join(__dir__, 'App.xcodeproj')
+  pods_project_path = File.join(__dir__, 'Pods', 'Pods.xcodeproj')
+  if File.directory?(app_project_path) && File.directory?(pods_project_path)
+    app_project = Xcodeproj::Project.open(app_project_path)
+    pods_project = Xcodeproj::Project.open(pods_project_path)
+    app_target = app_project.native_targets.find { |t| t.name == 'App' }
+    pods_app_target = pods_project.native_targets.find { |t| t.name == 'Pods-App' }
+    if app_target && pods_app_target
+      unless app_project.files.any? { |f| f.path&.end_with?('Pods.xcodeproj') }
+        app_project.add_subproject('Pods/Pods.xcodeproj', false)
+      end
+
+      app_target.dependencies.reject! do |dep|
+        dep.target_proxy && dep.target_proxy.remote_info == 'Pods-App'
+      end
+      app_target.add_dependency(pods_app_target)
+      app_project.save
+    end
+  end
 end

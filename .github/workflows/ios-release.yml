@@ -90,6 +90,19 @@ jobs:
         working-directory: frontend/ios/App
         run: pod install
 
+      - name: Build Pods-App (Release, simulator)
+        working-directory: frontend/ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace App.xcworkspace \
+            -scheme Pods-App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            PODS_PODFILE_DIR_PATH="$(pwd)" \
+            PODS_ROOT="$(pwd)/Pods"
+
       - name: Build iOS simulator app
         working-directory: frontend/ios/App
         run: |
