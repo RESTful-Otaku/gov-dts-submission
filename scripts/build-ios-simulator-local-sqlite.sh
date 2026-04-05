@@ -37,12 +37,16 @@ print_section "Frontend: build (local SQLite)"
 print_section "Capacitor: sync iOS"
 (cd "$FRONTEND" && bunx cap sync ios)
 
-print_section "iOS Simulator: xcodebuild"
+print_section "iOS Simulator: xcodebuild (SPM, same flags as CI mobile-builds)"
+# Apple Silicon: arm64 simulator only — SQLCipher SPM xcframework often has no x86_64 simulator slice.
+# On Intel Macs, drop ARCHS/EXCLUDED_ARCHS if you need x86_64 sim (may fail to link SQLCipher).
 (cd "$FRONTEND/ios/App" && xcodebuild -project App.xcodeproj -scheme App \
   -destination 'generic/platform=iOS Simulator' \
   -configuration Release build \
   CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-  -derivedDataPath build)
+  -derivedDataPath build \
+  ARCHS=arm64 \
+  'EXCLUDED_ARCHS[sdk=iphonesimulator*]'=x86_64)
 
 if [[ ! -d "$APP_PATH" ]]; then
   fail "App bundle not found: $APP_PATH"

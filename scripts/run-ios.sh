@@ -2,6 +2,12 @@
 # Build, test, and run the iOS app on the iOS Simulator via Capacitor.
 # - Default mode: starts local Go API on a fixed port and points the app at it.
 # - Optional mode: `--local-sqlite` skips the API and uses on-device SQLite instead.
+#
+# iOS native deps use Swift Package Manager (App.xcodeproj + CapApp-SPM), not CocoaPods.
+# `bun install` runs postinstall (scripts/apply-ios-native-patches.mjs) so @capacitor-community/sqlite
+# has a valid Package.swift. On Apple Silicon, `cap run ios` typically targets an arm64 simulator,
+# which matches the SQLCipher xcframework; Intel Mac + x86_64 sim may fail to link — use an arm64
+# simulator or build with the same ARCHS/EXCLUDED_ARCHS flags as .github/workflows/mobile-builds.yml.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,12 +87,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+install_frontend_deps() {
+  print_section "Frontend: bun install (postinstall applies iOS SPM patches)"
+  if [[ -f "$FRONTEND/bun.lock" ]]; then
+    (cd "$FRONTEND" && bun install --frozen-lockfile)
+  else
+    (cd "$FRONTEND" && bun install)
+  fi
+}
+
 run_tests() {
   print_section "Backend: tests"
   (cd "$BACKEND" && go test -v ./...)
 
   print_section "Frontend: check and build"
-  (cd "$FRONTEND" && bun install --frozen-lockfile >/dev/null 2>&1 || bun install >/dev/null 2>&1 || true)
   (cd "$FRONTEND" && bun run check && bun run test && bun run build)
 }
 
@@ -102,11 +116,13 @@ build_web_assets() {
 
 run_cap_sync() {
   print_section "Capacitor: sync iOS"
+  # Regenerates ios/App/CapApp-SPM/Package.swift from installed plugins (SPM).
   (cd "$FRONTEND" && bunx cap sync ios)
 }
 
 run_ios_simulator() {
   print_section "iOS: launching simulator app"
+  # Uses App.xcodeproj when CapApp-SPM is present (not App.xcworkspace / CocoaPods).
   # `cap run ios` will build and install; if the app is already present it will reinstall.
   (cd "$FRONTEND" && bunx cap run ios)
 }
@@ -130,6 +146,7 @@ start_backend_api() {
 
 main() {
   ensure_macos_and_xcode
+  install_frontend_deps
   run_tests
 
   if (( LOCAL_SQLITE == 0 )); then

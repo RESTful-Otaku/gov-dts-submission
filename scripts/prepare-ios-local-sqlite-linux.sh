@@ -36,6 +36,7 @@ print_section "Capacitor: sync iOS project (updates frontend/ios)"
 (cd "$FRONTEND" && bunx cap sync ios)
 
 ok "iOS project under frontend/ios is ready for Xcode (on macOS) or CI."
+info "iOS native deps are SwiftPM (CapApp-SPM); bun install runs postinstall patches for @capacitor-community/sqlite."
 
 print_section "Get iOS Simulator .app.zip on Linux"
 info "Apple does not provide Xcode for Linux — you cannot compile the .app locally."
