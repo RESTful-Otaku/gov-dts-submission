@@ -46,6 +46,15 @@ if (existsSync(sqlitePluginM)) {
   }
 }
 
+const utilsUpgrade = join(sqliteDir, "ios/Plugin/Utils/UtilsUpgrade.swift");
+if (existsSync(utilsUpgrade)) {
+  let u = readFileSync(utilsUpgrade, "utf8");
+  if (u.includes("for (statement) in statements")) {
+    u = u.replaceAll("for (statement) in statements", "for statement in statements");
+    writeFileSync(utilsUpgrade, u, "utf8");
+  }
+}
+
 function bumpSpmToolsVersion(filePath) {
   if (!existsSync(filePath)) return;
   const text = readFileSync(filePath, "utf8");

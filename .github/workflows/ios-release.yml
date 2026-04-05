@@ -92,7 +92,9 @@ jobs:
           xcodebuild -project App.xcodeproj -scheme App \
             -destination 'generic/platform=iOS Simulator' \
             -configuration Release build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            -derivedDataPath build
+            -derivedDataPath build \
+            ARCHS=arm64 \
+            'EXCLUDED_ARCHS[sdk=iphonesimulator*]'=x86_64
 
       - name: Prepare release artifact
         id: artifact

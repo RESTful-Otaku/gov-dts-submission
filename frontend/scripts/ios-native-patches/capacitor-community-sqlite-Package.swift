@@ -33,6 +33,10 @@ let package = Package(
                 "CapacitorSQLitePlugin.m",
                 "CapacitorSQLitePlugin.h",
             ],
+            swiftSettings: [
+                // Third-party plugin is not Swift 6-ready (concurrency, etc.); keep v5 semantics on Swift 6 toolchain.
+                .swiftLanguageMode(.v5),
+            ],
             linkerSettings: [
                 .linkedFramework("LocalAuthentication")
             ]
