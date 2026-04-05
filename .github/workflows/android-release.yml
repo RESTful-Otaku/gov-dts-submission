@@ -46,26 +46,6 @@ jobs:
             exit 1
           fi
 
-      - name: Detect relevant changes for Android release
-        id: changes
-        shell: bash
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          PREV_TAG="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
-          if [[ -n "$PREV_TAG" ]]; then
-            CHANGED="$(git diff --name-only "${PREV_TAG}..${TAG}")"
-          else
-            CHANGED="$(git show --pretty='' --name-only "${TAG}")"
-          fi
-
-          if echo "$CHANGED" | grep -E -q '^(frontend/android/|frontend/src/|frontend/assets/|frontend/index\.html|frontend/capacitor\.config\.ts|frontend/package\.json|frontend/bun\.lock|frontend/tsconfig|frontend/svelte\.config\.js|frontend/vite\.config\.ts|VERSION|\.github/workflows/android-release\.yml)'; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-            echo "Relevant Android/mobile changes detected."
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-            echo "No relevant Android/mobile changes detected; release build will be skipped."
-          fi
-
       - name: Create tag for manual dispatch
         if: github.event_name == 'workflow_dispatch'
         shell: bash
@@ -79,67 +59,66 @@ jobs:
           fi
 
       - name: Set up Node
-        if: steps.changes.outputs.relevant == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "24"
 
       - name: Set up Bun
-        if: steps.changes.outputs.relevant == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.8"
 
       - name: Set up Java
-        if: steps.changes.outputs.relevant == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: "21"
           distribution: "temurin"
 
       - name: Setup Android SDK
-        if: steps.changes.outputs.relevant == 'true'
         uses: android-actions/setup-android@v3
 
       - name: Install Android platform 36
-        if: steps.changes.outputs.relevant == 'true'
         run: |
           yes | sdkmanager --licenses 2>/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install frontend deps
-        if: steps.changes.outputs.relevant == 'true'
         working-directory: frontend
         run: bun install --frozen-lockfile
 
+      - name: Run frontend checks and tests
+        working-directory: frontend
+        run: |
+          bun run check
+          bun run test
+
       - name: Build web assets (pre-production local DB mode)
-        if: steps.changes.outputs.relevant == 'true'
         working-directory: frontend
         run: VITE_MOBILE_LOCAL_DB=true bun run build
 
       - name: Sync Capacitor Android
-        if: steps.changes.outputs.relevant == 'true'
         working-directory: frontend
         run: bunx cap sync android
 
       - name: Build debug APK
-        if: steps.changes.outputs.relevant == 'true'
         working-directory: frontend/android
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Prepare release artifact
-        if: steps.changes.outputs.relevant == 'true'
         id: artifact
         shell: bash
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           SRC="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
           OUT="gov-case-tracker-android-${TAG}.apk"
+          if [[ ! -f "$SRC" ]]; then
+            echo "Expected APK not found: $SRC"
+            exit 1
+          fi
           cp "$SRC" "$OUT"
           echo "apk_name=$OUT" >> "$GITHUB_OUTPUT"
 
-      - name: Create pre-release
-        if: steps.changes.outputs.relevant == 'true'
+      - name: Create pre-release / upload Android artifact
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -149,11 +128,6 @@ jobs:
           body: |
             Pre-production Android APK build for `${{ steps.tag.outputs.tag }}`.
 
-            Included assets:
+            Included Android asset:
             - `${{ steps.artifact.outputs.apk_name }}`
             - Source code archives (zip/tar.gz) generated automatically by GitHub Releases
-
-      - name: Skip summary
-        if: steps.changes.outputs.relevant != 'true'
-        run: |
-          echo "Skipping Android release: no mobile-relevant changes in tagged diff."
