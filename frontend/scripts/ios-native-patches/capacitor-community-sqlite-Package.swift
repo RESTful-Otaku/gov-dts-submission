@@ -44,7 +44,9 @@ let package = Package(
                 .product(name: "Capacitor", package: "capacitor-swift-pm")
             ],
             path: "ios/Plugin",
-            sources: ["CapacitorSQLitePlugin.m"]
+            sources: ["CapacitorSQLitePlugin.m"],
+            // Default for C/ObjC targets is `include/`, which does not exist under ios/Plugin.
+            publicHeadersPath: "."
         )
     ]
 )
