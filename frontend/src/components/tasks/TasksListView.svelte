@@ -45,7 +45,7 @@
   export let formatDate: (value: string) => string
 </script>
 
-<div class="list-wrapper" role="region" aria-label="Tasks in list view">
+<div class="list-wrapper" role="region" aria-label="Tasks in list view" data-tour="pick-task">
   <form class="quick-add-row" on:submit|preventDefault={handleQuickAdd} aria-label="Quick add task">
     <input
       type="text"

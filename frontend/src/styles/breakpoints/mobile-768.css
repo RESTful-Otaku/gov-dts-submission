@@ -670,7 +670,72 @@
 }
 
 @media (min-width: 769px) {
-  .app-sticky-top {
-    display: contents;
+  /*
+   * Desktop / tablet: same sticky chrome as mobile — header, toolbar, and (when open)
+   * the filters panel stay visible while scrolling the task area.
+   * align-self + width: avoid flex stretch quirks with position: sticky in column layout.
+   */
+  /*
+   * ::before masks the viewport band above the sticky block (same height as #app padding-top)
+   * so task content does not scroll visibly through that gap (matches narrow-viewport sticky).
+   */
+  .app > .app-sticky-top::before {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--app-chrome-top-offset, 2.5rem);
+    background-color: var(--color-bg);
+    background-image: linear-gradient(var(--color-bg), var(--color-bg));
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .app > .app-sticky-top {
+    align-self: flex-start;
+    width: 100%;
+    min-width: 0;
+    position: sticky;
+    top: var(--app-chrome-top-offset, 2.5rem);
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    padding-bottom: 0.65rem;
+    box-sizing: border-box;
+    background-color: var(--color-bg);
+    background-image: linear-gradient(var(--color-bg), var(--color-bg));
+    /* Full-width separator: border on the box is clipped to #app; line spans viewport. */
+    border-bottom: none;
+  }
+
+  .app > .app-sticky-top > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .app > .app-sticky-top::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: 1px;
+    transform: translateX(-50%);
+    background-color: var(--color-border);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .app-sticky-top .app-header,
+  .app-sticky-top .task-controls-wrap {
+    background-color: var(--color-bg);
+  }
+
+  .app-sticky-top .filters-panel {
+    width: 100%;
+    box-sizing: border-box;
   }
 }

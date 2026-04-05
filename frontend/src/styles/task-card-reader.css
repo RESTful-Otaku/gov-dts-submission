@@ -1,5 +1,12 @@
 /* Read-only task viewer: same shell as create/edit modals; tweaks for badges + readonly fields. */
 
+@media (min-width: 769px) {
+  .modal-backdrop .modal.modal--reader {
+    max-width: min(52rem, calc(100vw - 2.5rem));
+    width: 100%;
+  }
+}
+
 .task-readonly-form .task-readonly-label {
   font-size: 0.9rem;
   font-weight: 500;

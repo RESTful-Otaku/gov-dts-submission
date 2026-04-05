@@ -36,7 +36,7 @@
   class="tasks-grid"
   role="region"
   aria-label="Tasks in summary cards view"
-  data-tour={isNarrow ? 'card-swipe' : undefined}
+  data-tour="pick-task"
 >
   {#if visibleTasks.length === 0}
     <p class="empty">No tasks match your current search or filters.</p>

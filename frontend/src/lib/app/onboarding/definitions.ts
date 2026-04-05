@@ -86,8 +86,9 @@ export const TOUR_STEP_DEFS: TourStepDef[] = [
   {
     id: 'open_task_reader',
     title: 'Open task details',
-    body: 'Tap or click a task card to open the full read-only task view. This is the quickest way to read long titles/descriptions before choosing Edit or Delete.',
-    targetTourAttr: 'task-reader',
+    body: 'In Summary or Kanban, tap or click a task card to open the full read-only view. (List view uses Edit from the row instead.) That view is the quickest way to read long titles and descriptions.',
+    /* Spotlight the task list/cards (not the reader modal — that mount only exists after open). */
+    targetTourAttr: 'pick-task',
     interactive: true,
   },
   {
@@ -108,7 +109,7 @@ export const TOUR_STEP_DEFS: TourStepDef[] = [
     id: 'card_swipe',
     title: 'Swipe on cards',
     body: 'On small screens, swipe a task card right to open edit, or left to start delete. Edit and Delete buttons still work. Try one full swipe to complete this step.',
-    targetTourAttr: 'card-swipe',
+    targetTourAttr: 'pick-task',
     narrowOnly: true,
     interactive: true,
   },

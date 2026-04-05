@@ -47,6 +47,8 @@ a {
 }
 
 #app {
+  /* Sticky chrome uses the same inset as this padding so the header does not jump flush to the viewport when scrolling. */
+  --app-chrome-top-offset: 2.5rem;
   max-width: min(94vw, 1720px);
   margin: 0 auto;
   padding: 2.5rem 2rem 3rem;
@@ -54,6 +56,7 @@ a {
 
 @media (hover: none) and (pointer: coarse) {
   body #app {
+    --app-chrome-top-offset: var(--app-safe-top);
     padding-top: var(--app-safe-top) !important;
     padding-bottom: var(--app-safe-bottom) !important;
     padding-left: 0 !important;
@@ -76,6 +79,11 @@ a {
 .app-sticky-top__header-inner {
   display: block;
   min-width: 0;
+}
+
+/* Parent .app-sticky-top gap supplies spacing; avoid doubling with panel margin. */
+.app-sticky-top .filters-panel {
+  margin-top: 0;
 }
 
 /* Keep header row aligned to the same desktop rails as task controls. */

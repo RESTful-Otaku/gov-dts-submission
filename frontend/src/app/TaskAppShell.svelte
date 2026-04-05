@@ -71,23 +71,6 @@
       onExpandMobileSearch={() => app.expandMobileSearch()}
       onCollapseMobileSearch={() => app.collapseMobileSearch()}
     />
-  </div>
-
-  <section class="card" data-tour="task-area">
-    {#if app.healthStatus !== 'ok'}
-      <HealthBanner
-        healthStatus={app.healthStatus}
-        healthMessage={app.healthMessage}
-        refreshHealth={() => app.refreshHealth()}
-      />
-    {/if}
-    <div class="card-header">
-      <div class="card-header-main">
-        {#if app.loading}
-          <span class="badge">Loading…</span>
-        {/if}
-      </div>
-    </div>
 
     {#if app.showFilters}
       <FiltersPanel
@@ -107,6 +90,23 @@
         PICKER_I18N={PICKER_I18N}
       />
     {/if}
+  </div>
+
+  <section class="card" data-tour="task-area">
+    {#if app.healthStatus !== 'ok'}
+      <HealthBanner
+        healthStatus={app.healthStatus}
+        healthMessage={app.healthMessage}
+        refreshHealth={() => app.refreshHealth()}
+      />
+    {/if}
+    <div class="card-header">
+      <div class="card-header-main">
+        {#if app.loading}
+          <span class="badge">Loading…</span>
+        {/if}
+      </div>
+    </div>
 
     {#if app.tasks.length > 0}
       <TaskDueMetricsStrip

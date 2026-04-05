@@ -38,7 +38,7 @@
   }
 </script>
 
-<div class="kanban" role="region" aria-label="Tasks in kanban view">
+<div class="kanban" role="region" aria-label="Tasks in kanban view" data-tour="pick-task">
   {#each KANBAN_COLUMNS as column}
     <section
       class="kanban-column"
