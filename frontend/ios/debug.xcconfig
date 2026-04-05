@@ -1,2 +1,2 @@
-// Legacy file kept for reference. Xcode Debug builds use App/App.debug.xcconfig (includes Pods).
+// Shared with the App target for Debug (Capacitor SPM). See https://capacitorjs.com/docs/ios/spm
 CAPACITOR_DEBUG = true

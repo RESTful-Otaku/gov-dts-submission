@@ -1,5 +1,0 @@
-// Debug build settings: must live next to the Podfile so #include paths match CocoaPods’ layout.
-// (Using ../debug.xcconfig broke Debug: Xcode resolves includes from SRCROOT, so App/Pods/... was wrong.)
-#include "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"
-
-CAPACITOR_DEBUG = true

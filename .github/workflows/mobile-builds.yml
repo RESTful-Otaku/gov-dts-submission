@@ -154,32 +154,11 @@ jobs:
         working-directory: frontend
         run: bunx cap sync ios
 
-      - name: Install CocoaPods (iOS plugins)
-        working-directory: frontend/ios/App
-        run: pod install
-
-      # Without App → Pods-App target dependency, `xcodebuild -scheme App` can compile Swift before pods
-      # (graph shows a single target). Building the aggregate first matches Xcode GUI implicit ordering.
-      - name: Build Pods-App (Debug, simulator)
+      - name: Build iOS (simulator, SPM)
         working-directory: frontend/ios/App
         run: |
-          set -euo pipefail
-          xcodebuild -workspace App.xcworkspace \
-            -scheme Pods-App \
+          xcodebuild -project App.xcodeproj -scheme App \
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug build \
             CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            PODS_PODFILE_DIR_PATH="$(pwd)" \
-            PODS_ROOT="$(pwd)/Pods"
-
-      - name: Build iOS (simulator)
-        working-directory: frontend/ios/App
-        run: |
-          xcodebuild -workspace App.xcworkspace -scheme App \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            PODS_PODFILE_DIR_PATH="$(pwd)" \
-            PODS_ROOT="$(pwd)/Pods"
+            CODE_SIGNING_REQUIRED=NO
