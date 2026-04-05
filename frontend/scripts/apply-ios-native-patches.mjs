@@ -34,16 +34,11 @@ if (existsSync(sqliteDir) && existsSync(sqlitePackageSrc)) {
 }
 
 const sqlitePluginM = join(sqliteDir, "ios/Plugin/CapacitorSQLitePlugin.m");
-const spmSwiftModuleImport = "@import CapacitorCommunitySqliteSwift;";
-if (existsSync(sqlitePluginM)) {
-  let mSrc = readFileSync(sqlitePluginM, "utf8");
-  if (!mSrc.includes("CapacitorCommunitySqliteSwift")) {
-    mSrc = mSrc.replace(
-      "#import <Capacitor/Capacitor.h>",
-      `#import <Capacitor/Capacitor.h>\n${spmSwiftModuleImport}`,
-    );
-    writeFileSync(sqlitePluginM, mSrc, "utf8");
-  }
+const sqlitePluginMTemplate = join(root, "scripts/ios-native-patches/CapacitorSQLitePlugin.m");
+// Replace upstream .m: CAP_PLUGIN() re-declares @interface CapacitorSQLitePlugin, which clashes with
+// the Swift-generated interface when ObjC is a separate SPM target.
+if (existsSync(sqlitePluginMTemplate) && existsSync(sqliteDir)) {
+  copyFileSync(sqlitePluginMTemplate, sqlitePluginM);
 }
 
 const utilsUpgrade = join(sqliteDir, "ios/Plugin/Utils/UtilsUpgrade.swift");
