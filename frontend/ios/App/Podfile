@@ -31,15 +31,15 @@ post_install do |installer|
     end
   end
 
-  # Capacitor’s App.xcodeproj often has no PBXTargetDependency on Pods-App. CLI / CI then builds only
-  # the App target (“Target dependency graph (1 target)”), so Swift runs before Capacitor exists.
+  # Capacitor App.xcodeproj often has no PBXTargetDependency on Pods-App. CLI/CI then builds only
+  # the App target (dependency graph: one target), so Swift runs before Capacitor exists.
+  # Use installer.pods_project here: CocoaPods 1.16+ runs post_install before Pods.xcodeproj is on disk.
   require 'xcodeproj'
 
   app_project_path = File.join(__dir__, 'App.xcodeproj')
-  pods_project_path = File.join(__dir__, 'Pods', 'Pods.xcodeproj')
-  if File.directory?(app_project_path) && File.directory?(pods_project_path)
+  if File.directory?(app_project_path)
     app_project = Xcodeproj::Project.open(app_project_path)
-    pods_project = Xcodeproj::Project.open(pods_project_path)
+    pods_project = installer.pods_project
     app_target = app_project.native_targets.find { |t| t.name == 'App' }
     pods_app_target = pods_project.native_targets.find { |t| t.name == 'Pods-App' }
     if app_target && pods_app_target
