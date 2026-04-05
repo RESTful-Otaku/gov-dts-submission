@@ -166,4 +166,5 @@ jobs:
             -configuration Debug build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            PODS_PODFILE_DIR_PATH="$(pwd)"
+            PODS_PODFILE_DIR_PATH="$(pwd)" \
+            PODS_ROOT="$(pwd)/Pods"
