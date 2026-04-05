@@ -33,6 +33,19 @@ if (existsSync(sqliteDir) && existsSync(sqlitePackageSrc)) {
   writeFileSync(sqlitePackageDest, body, "utf8");
 }
 
+const sqlitePluginM = join(sqliteDir, "ios/Plugin/CapacitorSQLitePlugin.m");
+const spmSwiftModuleImport = "@import CapacitorCommunitySqliteSwift;";
+if (existsSync(sqlitePluginM)) {
+  let mSrc = readFileSync(sqlitePluginM, "utf8");
+  if (!mSrc.includes("CapacitorCommunitySqliteSwift")) {
+    mSrc = mSrc.replace(
+      "#import <Capacitor/Capacitor.h>",
+      `#import <Capacitor/Capacitor.h>\n${spmSwiftModuleImport}`,
+    );
+    writeFileSync(sqlitePluginM, mSrc, "utf8");
+  }
+}
+
 function bumpSpmToolsVersion(filePath) {
   if (!existsSync(filePath)) return;
   const text = readFileSync(filePath, "utf8");
