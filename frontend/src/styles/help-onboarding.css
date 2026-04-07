@@ -22,6 +22,18 @@
     color 0.15s ease;
 }
 
+/* Collapsed chrome: same row as filter / back-to-top (normal flow — do not fix to viewport). */
+.btn-help.btn-help--in-toolbar {
+  position: static;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.btn-help.btn-help--in-toolbar.btn-help--open {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .btn-help-bars {
   position: relative;
   width: 1rem;
@@ -576,11 +588,16 @@
   }
 }
 
-/* Guided tour: blur veil + coach panel (under app modals, z-index 1200+) */
+/* Help opens during settings tour steps; tour sits above help backdrop but below task modals (1200). */
+.modal-backdrop.modal-backdrop--help {
+  z-index: 1180;
+}
+
+/* Guided tour: blur veil + coach panel (above help, under Create/Edit/Delete modals at 1200) */
 .tour-coach-root {
   position: fixed;
   inset: 0;
-  z-index: 1050;
+  z-index: 1195;
   pointer-events: none;
 }
 

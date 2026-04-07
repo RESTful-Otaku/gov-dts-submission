@@ -242,6 +242,9 @@ func TestCORSPreflight_Options(t *testing.T) {
 	if rr.Header().Get("Access-Control-Allow-Methods") == "" {
 		t.Fatal("expected Access-Control-Allow-Methods header")
 	}
+	if allow := rr.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "Authorization") {
+		t.Fatalf("expected Authorization in Access-Control-Allow-Headers, got %q", allow)
+	}
 	if rr.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatalf("expected security header X-Frame-Options, got %q", rr.Header().Get("X-Frame-Options"))
 	}

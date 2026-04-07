@@ -2,6 +2,7 @@
   import SveltyPicker from 'svelty-picker'
   import type { Action } from 'svelte/action'
   import type { i18nType } from 'svelty-picker/i18n'
+  import type { OnboardingStepId } from '../../lib/app/onboarding/types'
   import type { Task, TaskPriority, TaskStatus } from '../../lib/api'
   import ListPagination from './ListPagination.svelte'
   import TaskListRow from './TaskListRow.svelte'
@@ -43,6 +44,8 @@
   export let priorityLabel: (p: TaskPriority) => string
   export let statusLabel: (s: TaskStatus) => string
   export let formatDate: (value: string) => string
+  export let tourSpotlightStepId: OnboardingStepId | null = null
+  export let tourAnchorTaskId: string | null = null
 </script>
 
 <div class="list-wrapper" role="region" aria-label="Tasks in list view" data-tour="pick-task">
@@ -94,6 +97,7 @@
         <button
           type="button"
           class="danger btn-icon-compact"
+          data-tour={tourSpotlightStepId === 'list_bulk_delete' ? 'tour-list-bulk-delete' : undefined}
           on:click={openBulkDeleteModal}
           title="Delete selected tasks"
           aria-label="Delete selected tasks"
@@ -131,7 +135,7 @@
   <table class="task-table">
     <thead>
       <tr>
-        <th scope="col" class="col-select">
+        <th scope="col" class="col-select" data-tour={tourSpotlightStepId === 'list_multiselect' ? 'tour-list-select' : undefined}>
           <label class="select-all-label">
             <input
               type="checkbox"
@@ -164,6 +168,9 @@
         <TaskListRow
           {taskItem}
           selected={selectedTaskIds.has(taskItem.id)}
+          tourOpenSpotlight={tourAnchorTaskId === taskItem.id && tourSpotlightStepId === 'open_task_reader'}
+          tourEditSpotlight={tourAnchorTaskId === taskItem.id && tourSpotlightStepId === 'edit_task'}
+          tourDeleteSpotlight={tourAnchorTaskId === taskItem.id && tourSpotlightStepId === 'delete_task'}
           {toggleTaskSelection}
           {openEditModal}
           {handleDeleteTask}

@@ -1,7 +1,24 @@
 import { tick } from 'svelte'
 import type { Task, TaskPriority, TaskStatus } from '../../api'
 import { Capacitor } from '@capacitor/core'
+import { resolveBootstrapState, toPersistedTaskUiState } from './bootstrapState'
 import { createTask, deleteTask, listTasks, updateTask, updateTaskStatus } from '../../api'
+import { runBoundedDeletes } from './bulkDelete'
+import {
+  nextAutoAdvanceStepId,
+  shouldExecuteAutoAdvance,
+  TOUR_AUTO_ADVANCE_DELAY_MS,
+} from './tourAutoAdvance'
+import {
+  currentTourStepId,
+  helpTabForPinnedSettingsStep,
+  isInvalidTourState,
+  nextAutoViewModeForTourStep,
+  shouldCollapseMobileSearchForTourStep,
+  shouldCompleteListMultiSelectStep,
+  shouldKeepHelpPinnedForSettingsStep,
+  shouldSeedBulkDeleteSelection,
+} from './onboardingRules'
 import { dueState as dueStateUtil } from '../../tasks/dueState'
 import { parseDateTimeUK, toDateTimePickerValue } from '../../tasks/date'
 import {
@@ -33,6 +50,8 @@ import {
 } from '../../tasks/visibleList'
 import { taskDueCounts, uniqueSortedOwners, uniqueSortedTags } from '../../tasks/metrics'
 import { toastDurationMs } from '../toasts'
+import { isTaskSpotlightStep } from './tourStepHelpers'
+import { computeStickyChromeCollapsed } from './stickyChrome'
 import type {
   FontSize,
   MotionPreference,
@@ -47,7 +66,10 @@ import type {
   ViewMode,
 } from '../types'
 import type { HelpTabId, OnboardingStepId } from '../onboarding/types'
-import { CHECKLIST_STEP_IDS, tourStepsForLayout } from '../onboarding/definitions'
+import {
+  CHECKLIST_STEP_IDS,
+  tourStepsForLayout,
+} from '../onboarding/definitions'
 import {
   checklistProgress,
   isAutoHelpDismissed,
@@ -72,6 +94,10 @@ export class TaskAppController {
   viewMode = $state<ViewMode>('cards')
   isNarrow = $state(false)
   mobileSearchExpanded = $state(false)
+  /** GOV.UK/title row hidden past scroll threshold; only shows again near top (see applyStickyChromeFromScroll). */
+  stickyChromeCollapsed = $state(false)
+  private stickyChromeLastY = 0
+  private stickyChromeScrollRaf = 0
 
   sortKey = $state<SortKey>('due')
   sortAscending = $state(true)
@@ -184,15 +210,25 @@ export class TaskAppController {
 
   checklistProgressState = $derived(checklistProgress(this.checklist, this.isNarrow))
 
+  /** Current tour step id when the tour is running (for per-card / per-control spotlights). */
+  tourSpotlightStepId = $derived(
+    this.tourRunning ? (this.tourSteps[this.tourStepIndex]?.id ?? null) : null,
+  )
+
+  /** First visible task used as the onboarding anchor for card/list/kanban highlights. */
+  tourAnchorTaskId = $derived.by(() => {
+    const id = this.tourSpotlightStepId
+    if (isTaskSpotlightStep(id)) {
+      return this.visibleTasks[0]?.id ?? null
+    }
+    return null
+  })
+
   private tourAdvanceGeneration = 0
-  private settingsTourStepIds = new Set<OnboardingStepId>([
-    'theme',
-    'text_size',
-    'density',
-    'motion',
-    'startup_view',
-    'restore_defaults',
-  ])
+  /** Baseline `sortKey|sortAscending` when entering the filter sort tour step (detect first change). */
+  private filterSortTourBaseline: string | null = null
+  /** Last wide tour step that auto-switched view mode (one shot per step id). */
+  private tourViewModeAutoForStep: OnboardingStepId | null = null
   private helpPinnedBySettingsTour = false
 
   isSelectAllIndeterminate = $derived(
@@ -242,7 +278,8 @@ export class TaskAppController {
     })
 
     $effect(() => {
-      persistTaskUiPreferences({
+      persistTaskUiPreferences(
+        toPersistedTaskUiState({
         viewMode: this.viewMode,
         sortKey: this.sortKey,
         sortAscending: this.sortAscending,
@@ -254,7 +291,8 @@ export class TaskAppController {
         filterFrom: this.filterFrom,
         filterTo: this.filterTo,
         showFilters: this.showFilters,
-      })
+        }),
+      )
     })
 
     $effect(() => {
@@ -277,12 +315,7 @@ export class TaskAppController {
     $effect(() => {
       if (!this.tourRunning) return
       const steps = this.tourSteps
-      if (
-        steps.length === 0 ||
-        this.tourStepIndex < 0 ||
-        this.tourStepIndex >= steps.length ||
-        !steps[this.tourStepIndex]
-      ) {
+      if (isInvalidTourState(this.tourRunning, steps, this.tourStepIndex)) {
         this.stopTour()
       }
     })
@@ -292,16 +325,14 @@ export class TaskAppController {
      * exist and progression remains interaction-driven. When leaving those steps, close that panel.
      */
     $effect(() => {
+      const stepId = currentTourStepId(this.tourSteps, this.tourStepIndex)
       if (!this.tourRunning) {
         this.helpPinnedBySettingsTour = false
         return
       }
-      const step = this.tourSteps[this.tourStepIndex]
-      if (!step) return
-      const needsSettingsPanel = this.settingsTourStepIds.has(step.id)
-      if (needsSettingsPanel) {
+      if (shouldKeepHelpPinnedForSettingsStep(this.tourRunning, stepId)) {
         this.helpModalOpen = true
-        this.helpActiveTab = 'settings'
+        this.helpActiveTab = helpTabForPinnedSettingsStep()
         this.helpPinnedBySettingsTour = true
         return
       }
@@ -315,18 +346,26 @@ export class TaskAppController {
       if (!this.tourRunning) return
       const steps = tourStepsForLayout(this.isNarrow)
       const step = steps[this.tourStepIndex]
-      if (!step?.interactive) return
-      if (!this.checklist[step.id]) return
+      const stepId = nextAutoAdvanceStepId(this.tourRunning, step, this.checklist)
+      if (!stepId) return
       this.tourAdvanceGeneration++
       const gen = this.tourAdvanceGeneration
-      const stepId = step.id
       const handle = setTimeout(() => {
-        if (gen !== this.tourAdvanceGeneration) return
-        if (!this.tourRunning) return
-        const now = tourStepsForLayout(this.isNarrow)[this.tourStepIndex]
-        if (!now || now.id !== stepId || !this.checklist[stepId]) return
+        if (
+          !shouldExecuteAutoAdvance({
+            generationAtSchedule: gen,
+            currentGeneration: this.tourAdvanceGeneration,
+            tourRunning: this.tourRunning,
+            steps: tourStepsForLayout(this.isNarrow),
+            stepIndex: this.tourStepIndex,
+            expectedStepId: stepId,
+            checklist: this.checklist,
+          })
+        ) {
+          return
+        }
         this.nextTourStep()
-      }, 520)
+      }, TOUR_AUTO_ADVANCE_DELAY_MS)
       return () => clearTimeout(handle)
     })
 
@@ -336,10 +375,78 @@ export class TaskAppController {
       const steps = tourStepsForLayout(this.isNarrow)
       const step = steps[this.tourStepIndex]
       if (!step) return
-      const needsCompactToolbar: OnboardingStepId[] = ['toolbar', 'create_task', 'filters', 'card_swipe']
-      if (!needsCompactToolbar.includes(step.id)) return
+      if (!shouldCollapseMobileSearchForTourStep(this.tourRunning, this.isNarrow, step.id)) return
       this.mobileSearchExpanded = false
       void tick().then(() => this.searchInput?.blur())
+    })
+
+    /** Wide: sort demo needs the filters panel open so the sort row is in the DOM. */
+    $effect(() => {
+      if (!this.tourRunning) return
+      if (this.tourSteps[this.tourStepIndex]?.id === 'filter_sort_demo') {
+        this.showFilters = true
+      }
+    })
+
+    /** Wide: complete sort demo when the user changes sort field or direction. */
+    $effect(() => {
+      const step = this.tourRunning ? this.tourSteps[this.tourStepIndex]?.id : null
+      const sig = `${this.sortKey}|${this.sortAscending}`
+      if (step !== 'filter_sort_demo') {
+        this.filterSortTourBaseline = null
+        return
+      }
+      if (this.filterSortTourBaseline === null) {
+        this.filterSortTourBaseline = sig
+        return
+      }
+      if (sig !== this.filterSortTourBaseline) {
+        this.markOnboardingStep('filter_sort_demo')
+      }
+    })
+
+    /** Wide list: multi-select step completes when at least one row is selected. */
+    $effect(() => {
+      const stepId = currentTourStepId(this.tourSteps, this.tourStepIndex)
+      if (
+        shouldCompleteListMultiSelectStep(
+          this.tourRunning,
+          stepId,
+          this.viewMode,
+          this.selectedTaskIds.size,
+        )
+      ) {
+        this.markOnboardingStep('list_multiselect')
+      }
+    })
+
+    /** Wide list: bulk-delete step needs a selection so the toolbar (and spotlight target) exists. */
+    $effect(() => {
+      const stepId = currentTourStepId(this.tourSteps, this.tourStepIndex)
+      if (
+        shouldSeedBulkDeleteSelection(
+          this.tourRunning,
+          stepId,
+          this.viewMode,
+          this.visibleTasks.length,
+          this.selectedTaskIds.size,
+        )
+      ) {
+        this.selectedTaskIds = new Set([this.visibleTasks[0].id])
+      }
+    })
+
+    /** Wide: jump to the view each list/kanban tour step is about (one layout change per step). */
+    $effect(() => {
+      const stepId = currentTourStepId(this.tourSteps, this.tourStepIndex)
+      const next = nextAutoViewModeForTourStep(
+        this.tourRunning,
+        this.isNarrow,
+        stepId,
+        this.tourViewModeAutoForStep,
+      )
+      this.tourViewModeAutoForStep = next.nextStepId
+      if (next.viewMode) this.viewMode = next.viewMode
     })
   }
 
@@ -382,17 +489,18 @@ export class TaskAppController {
     this.createModalOpen = false
   }
 
-  /** Mobile: expanded search hides Create and Filter; avoid that during the read-only toolbar tour step. */
+  /** Mobile: expanded search hides Create and Filter; avoid that when the tour needs those controls. */
   expandMobileSearch(): void {
     if (this.tourRunning && this.isNarrow) {
       const step = tourStepsForLayout(this.isNarrow)[this.tourStepIndex]
-      if (step?.id === 'toolbar') return
+      if (step && shouldCollapseMobileSearchForTourStep(this.tourRunning, this.isNarrow, step.id)) return
     }
     this.mobileSearchExpanded = true
   }
 
   collapseMobileSearch(): void {
     this.mobileSearchExpanded = false
+    this.applyStickyChromeFromScroll(false)
   }
 
   openHelp(tab: HelpTabId = 'guide'): void {
@@ -414,6 +522,9 @@ export class TaskAppController {
   startGuidedTour(): void {
     this.helpModalOpen = false
     this.helpActiveTab = 'guide'
+    this.mobileSearchExpanded = false
+    window.scrollTo({ top: 0, behavior: 'auto' })
+    this.stickyChromeCollapsed = false
     this.tourRunning = true
     this.tourStepIndex = 0
   }
@@ -454,6 +565,9 @@ export class TaskAppController {
     const idx = steps.findIndex((s) => s.id === id)
     this.helpModalOpen = false
     this.helpActiveTab = 'guide'
+    this.mobileSearchExpanded = false
+    window.scrollTo({ top: 0, behavior: 'auto' })
+    this.stickyChromeCollapsed = false
     this.tourRunning = true
     this.tourStepIndex = idx >= 0 ? idx : 0
   }
@@ -502,6 +616,9 @@ export class TaskAppController {
   openBulkDeleteModal(): void {
     if (this.selectedTaskIds.size === 0) return
     this.deleteModalTaskIds = [...this.selectedTaskIds]
+    if (this.tourRunning && this.tourSteps[this.tourStepIndex]?.id === 'list_bulk_delete') {
+      this.markOnboardingStep('list_bulk_delete')
+    }
   }
 
   closeDeleteModal(): void {
@@ -513,15 +630,14 @@ export class TaskAppController {
     const ids = [...this.deleteModalTaskIds]
     this.closeDeleteModal()
     this.selectedTaskIds = new Set()
-    let failed = 0
-    for (const id of ids) {
-      try {
-        await deleteTask(id)
-        this.tasks = this.tasks.filter((t) => t.id !== id)
-      } catch (e) {
-        failed++
-        this.showToast(e instanceof Error ? e.message : 'Failed to delete task', 'error')
-      }
+    const { deletedIds, failed } = await runBoundedDeletes(
+      ids,
+      (id) => deleteTask(id),
+      (e) => this.showToast(e instanceof Error ? e.message : 'Failed to delete task', 'error'),
+    )
+    if (deletedIds.length > 0) {
+      const removed = new Set(deletedIds)
+      this.tasks = this.tasks.filter((t) => !removed.has(t.id))
     }
     if (failed === 0) {
       this.markOnboardingStep('delete_task')
@@ -573,6 +689,56 @@ export class TaskAppController {
     const width = window.innerWidth || document.documentElement.clientWidth || 0
     this.isNarrow = width <= 640
     if (!this.isNarrow) this.mobileSearchExpanded = false
+    this.stickyChromeLastY = window.scrollY ?? document.documentElement.scrollTop ?? 0
+    this.applyStickyChromeFromScroll(true)
+  }
+
+  /**
+   * Hysteresis (no “scroll up to expand”): expand only near the top; collapse past a lower bound.
+   * Between those Y values, state is unchanged while scrolling (`resolveBand` false) to avoid jitter.
+   * On mount/resize (`resolveBand` true), pick a side from the midpoint for mid-page loads.
+   */
+  applyStickyChromeFromScroll(resolveBand = false): void {
+    const y = window.scrollY ?? document.documentElement.scrollTop ?? 0
+    this.stickyChromeLastY = y
+    this.stickyChromeCollapsed = computeStickyChromeCollapsed(
+      y,
+      resolveBand,
+      this.stickyChromeCollapsed,
+      this.tourRunning,
+    )
+  }
+
+  /** One read per frame while scrolling; keeps sticky chrome state in sync without event spam. */
+  private scheduleStickyChromeScroll(): void {
+    if (this.stickyChromeScrollRaf !== 0) return
+    this.stickyChromeScrollRaf = requestAnimationFrame(() => {
+      this.stickyChromeScrollRaf = 0
+      this.applyStickyChromeFromScroll(false)
+    })
+  }
+
+  scrollChromeToTop(): void {
+    const instant =
+      this.motionPreference === 'reduced' ||
+      (this.motionPreference === 'system' &&
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    window.scrollTo({ top: 0, behavior: instant ? 'auto' : 'smooth' })
+  }
+
+  /** Register in shell `onMount`; returns teardown. */
+  attachStickyChromeScroll(): () => void {
+    this.applyStickyChromeFromScroll(true)
+    const onScroll = () => this.scheduleStickyChromeScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (this.stickyChromeScrollRaf !== 0) {
+        cancelAnimationFrame(this.stickyChromeScrollRaf)
+        this.stickyChromeScrollRaf = 0
+      }
+    }
   }
 
   clearAllFilters(): void {
@@ -805,7 +971,7 @@ export class TaskAppController {
   }
 
   async handleKanbanFinalize(status: TaskStatus, e: CustomEvent<{ items: Task[] }>): Promise<void> {
-    await finalizeKanbanColumnDrop({
+    const changed = await finalizeKanbanColumnDrop({
       status,
       items: e.detail.items as Task[],
       tasks: this.tasks,
@@ -815,6 +981,13 @@ export class TaskAppController {
       updateTaskStatus,
       showToast: (m, t) => this.showToast(m, t),
     })
+    if (
+      changed &&
+      this.tourRunning &&
+      this.tourSteps[this.tourStepIndex]?.id === 'kanban_drag'
+    ) {
+      this.markOnboardingStep('kanban_drag')
+    }
   }
 
   async refreshHealth(): Promise<void> {
@@ -827,34 +1000,53 @@ export class TaskAppController {
   bootstrap(): void {
     this.handleResize()
     const boot = loadTaskUiBootstrapFromStorage()
-    if (boot.theme) {
-      this.theme = boot.theme
-    } else {
-      const mobileOrNative = this.isNarrow || Capacitor.isNativePlatform()
-      this.theme = mobileOrNative ? systemPreferredTheme() : 'light'
-    }
-    if (boot.fontSize) this.fontSize = boot.fontSize
-    if (boot.density) this.density = boot.density
-    if (boot.motionPreference) this.motionPreference = boot.motionPreference
-    if (boot.startupViewMode) this.startupViewMode = boot.startupViewMode
-    if (boot.defaultSortKey) this.defaultSortKey = boot.defaultSortKey
-    if (boot.defaultSortAscending !== undefined) this.defaultSortAscending = boot.defaultSortAscending
+    const resolved = resolveBootstrapState({
+      boot,
+      defaults: {
+        theme: this.theme,
+        fontSize: this.fontSize,
+        viewMode: this.viewMode,
+        sortKey: this.sortKey,
+        sortAscending: this.sortAscending,
+        statusFilter: this.statusFilter,
+        priorityFilter: this.priorityFilter,
+        ownerFilter: this.ownerFilter,
+        tagFilters: this.tagFilters,
+        searchTerm: this.searchTerm,
+        debouncedSearchTerm: this.debouncedSearchTerm,
+        filterFrom: this.filterFrom,
+        filterTo: this.filterTo,
+        showFilters: this.showFilters,
+        density: this.density,
+        motionPreference: this.motionPreference,
+        startupViewMode: this.startupViewMode,
+        defaultSortKey: this.defaultSortKey,
+        defaultSortAscending: this.defaultSortAscending,
+      },
+      isNarrow: this.isNarrow,
+      isNativePlatform: Capacitor.isNativePlatform(),
+      systemTheme: systemPreferredTheme,
+    })
 
-    this.sortKey = this.defaultSortKey
-    this.sortAscending = this.defaultSortAscending
-    if (boot.sortKey) this.sortKey = boot.sortKey
-    if (boot.sortAscending !== undefined) this.sortAscending = boot.sortAscending
-    if (boot.statusFilter) this.statusFilter = boot.statusFilter
-    if (boot.priorityFilter) this.priorityFilter = boot.priorityFilter
-    if (boot.ownerFilter !== undefined) this.ownerFilter = boot.ownerFilter
-    if (boot.tagFilters !== undefined) this.tagFilters = [...boot.tagFilters]
-    if (boot.searchTerm !== undefined) this.searchTerm = boot.searchTerm
-    if (boot.debouncedSearchTerm !== undefined) this.debouncedSearchTerm = boot.debouncedSearchTerm
-    if (boot.filterFrom !== undefined) this.filterFrom = boot.filterFrom
-    if (boot.filterTo !== undefined) this.filterTo = boot.filterTo
-    if (boot.showFilters !== undefined) this.showFilters = boot.showFilters
-    if (boot.viewMode) this.viewMode = boot.viewMode
-    if (this.startupViewMode !== 'remember') this.viewMode = this.startupViewMode
+    this.theme = resolved.theme
+    this.fontSize = resolved.fontSize
+    this.viewMode = resolved.viewMode
+    this.sortKey = resolved.sortKey
+    this.sortAscending = resolved.sortAscending
+    this.statusFilter = resolved.statusFilter
+    this.priorityFilter = resolved.priorityFilter
+    this.ownerFilter = resolved.ownerFilter
+    this.tagFilters = resolved.tagFilters
+    this.searchTerm = resolved.searchTerm
+    this.debouncedSearchTerm = resolved.debouncedSearchTerm
+    this.filterFrom = resolved.filterFrom
+    this.filterTo = resolved.filterTo
+    this.showFilters = resolved.showFilters
+    this.density = resolved.density
+    this.motionPreference = resolved.motionPreference
+    this.startupViewMode = resolved.startupViewMode
+    this.defaultSortKey = resolved.defaultSortKey
+    this.defaultSortAscending = resolved.defaultSortAscending
 
     applyTheme(this.theme, Boolean(boot.theme))
     applyFontSize(this.fontSize)

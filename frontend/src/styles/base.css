@@ -18,6 +18,9 @@ body {
   --app-safe-bottom: max(1.85rem, calc(env(safe-area-inset-bottom, 0px) + 1.35rem));
   --app-safe-left: max(0.55rem, env(safe-area-inset-left, 0px));
   --app-safe-right: max(0.55rem, env(safe-area-inset-right, 0px));
+  /* Sticky chrome: collapsing the GOV.UK / title / menu row (scroll or mobile expanded search). */
+  --sticky-chrome-collapse-dur: 0.38s;
+  --sticky-chrome-collapse-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Accessibility: explicit reduced motion mode + OS preference fallback. */
@@ -74,11 +77,29 @@ a {
   gap: 1.75rem;
 }
 
-/* Wrapper for mobile grid collapse; desktop/tablet stays normal block flow. */
-.app-sticky-top__header-slot,
-.app-sticky-top__header-inner {
-  display: block;
+/*
+ * Header slot: 1fr ↔ 0fr so brand + menu hide smoothly while controls + filters stay (all viewports).
+ * .app-sticky-top--chrome-collapsed is toggled from scroll; .app-sticky-top--mobile-search-open from UI.
+ */
+.app-sticky-top__header-slot {
+  display: grid;
+  grid-template-rows: 1fr;
   min-width: 0;
+  /* Critical: flex items default to min-height:auto, which blocks 0fr from truly collapsing. */
+  min-height: 0;
+  transition: grid-template-rows var(--sticky-chrome-collapse-dur) var(--sticky-chrome-collapse-ease);
+}
+
+.app-sticky-top__header-inner {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-sticky-top--chrome-collapsed .app-sticky-top__header-slot,
+.app-sticky-top--mobile-search-open .app-sticky-top__header-slot {
+  grid-template-rows: 0fr;
+  overflow: hidden;
 }
 
 /* Parent .app-sticky-top gap supplies spacing; avoid doubling with panel margin. */

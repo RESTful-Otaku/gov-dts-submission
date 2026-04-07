@@ -12,6 +12,9 @@
   export let priorityLabel: (p: TaskPriority) => string
   export let statusLabel: (s: TaskStatus) => string
   export let formatDate: (value: string) => string
+  export let tourOpenSpotlight = false
+  export let tourEditSpotlight = false
+  export let tourDeleteSpotlight = false
 </script>
 
 <tr class:row-selected={selected}>
@@ -44,13 +47,21 @@
   </td>
   <td>{formatDate(taskItem.createdAt)}</td>
   <td class="table-actions">
-    <button type="button" class="btn-icon-compact" on:click={() => openEditModal(taskItem)} title="Edit task" aria-label="Edit">
+    <button
+      type="button"
+      class="btn-icon-compact"
+      data-tour={tourOpenSpotlight ? 'tour-spot-open' : tourEditSpotlight ? 'tour-spot-edit' : undefined}
+      on:click={() => openEditModal(taskItem)}
+      title="Edit task"
+      aria-label="Edit"
+    >
       <span class="btn-icon-compact__icon" aria-hidden="true">✎</span>
       <span class="btn-icon-compact__label">Edit</span>
     </button>
     <button
       type="button"
       class="danger btn-icon-compact"
+      data-tour={tourDeleteSpotlight ? 'tour-spot-delete' : undefined}
       on:click={() => handleDeleteTask(taskItem.id)}
       title="Delete task"
       aria-label="Delete"

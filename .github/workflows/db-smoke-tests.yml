@@ -34,6 +34,10 @@ jobs:
         working-directory: backend
         run: go test -v ./...
 
+      - name: Run go vet
+        working-directory: backend
+        run: go vet ./...
+
   postgres:
     name: PostgreSQL
     runs-on: ubuntu-latest

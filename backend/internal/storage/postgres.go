@@ -101,7 +101,10 @@ func (s *PostgresStore) GetTask(ctx context.Context, id string) (*task.Task, err
 	if desc.Valid {
 		t.Description = &desc.String
 	}
-	tags, _ := ParseTagsJSON(tagsRaw)
+	tags, err := ParseTagsJSON(tagsRaw)
+	if err != nil {
+		return nil, err
+	}
 	t.Tags = tags
 	t.DueAt = t.DueAt.UTC()
 	t.CreatedAt = t.CreatedAt.UTC()
@@ -137,7 +140,10 @@ func (s *PostgresStore) ListTasks(ctx context.Context, opts ListOptions) ([]*tas
 		if desc.Valid {
 			t.Description = &desc.String
 		}
-		tags, _ := ParseTagsJSON(tagsRaw)
+		tags, err := ParseTagsJSON(tagsRaw)
+		if err != nil {
+			return nil, err
+		}
 		t.Tags = tags
 		t.DueAt = t.DueAt.UTC()
 		t.CreatedAt = t.CreatedAt.UTC()

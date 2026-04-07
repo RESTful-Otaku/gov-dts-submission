@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flip } from 'svelte/animate'
   import { dndzone } from 'svelte-dnd-action'
+  import type { OnboardingStepId } from '../../lib/app/onboarding/types'
   import { modalContentTransition } from '../../lib/ui/modalContentTransition'
   import type { Task, TaskPriority, TaskStatus } from '../../lib/api'
   import TagChips from './TagChips.svelte'
@@ -28,6 +29,8 @@
   export let priorityLabel: (p: TaskPriority) => string
   export let formatDate: (value: string) => string
   export let isNarrow: boolean
+  export let tourSpotlightStepId: OnboardingStepId | null = null
+  export let tourAnchorTaskId: string | null = null
 
   let readerTaskId: string | null = null
   $: readerTask = readerTaskId === null ? null : visibleTasks.find((t) => t.id === readerTaskId) ?? null
@@ -63,6 +66,13 @@
         aria-label={column.title}
       >
         {#each tasksForColumn(column.status) as task (task.id)}
+          {@const anchor = tourAnchorTaskId !== null && task.id === tourAnchorTaskId}
+          {@const cardTourSpotlight =
+            anchor && tourSpotlightStepId === 'edit_task'
+              ? ('edit' as const)
+              : anchor && tourSpotlightStepId === 'delete_task'
+                ? ('delete' as const)
+                : null}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <article
@@ -70,6 +80,13 @@
             role="listitem"
             aria-label={task.title}
             animate:flip={{ duration: KANBAN_FLIP_MS }}
+            data-tour={
+              anchor && tourSpotlightStepId === 'open_task_reader'
+                ? 'tour-spot-open'
+                : anchor && tourSpotlightStepId === 'kanban_drag'
+                  ? 'tour-kanban-drag'
+                  : undefined
+            }
             on:click={() => openReader(task.id)}
           >
             <h4>{task.title}</h4>
@@ -94,6 +111,7 @@
             <TaskMetaDl rows={[{ term: 'Due', description: formatDate(task.dueAt) }]} />
             <TaskCardActions
               stopPropagation={true}
+              tourSpotlight={cardTourSpotlight}
               onEdit={() => openEditModal(task)}
               onDelete={() => handleDeleteTask(task.id)}
               deleteTitle={`Delete task ${task.title}`}

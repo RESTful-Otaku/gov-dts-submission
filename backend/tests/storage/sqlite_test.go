@@ -186,3 +186,27 @@ func TestSQLiteMigrate_AllowsDestructiveLegacyDrop_WhenExplicitlyEnabled(t *test
 	}
 }
 
+func TestSQLiteStore_GetTask_InvalidTagsJSON_ReturnsError(t *testing.T) {
+	db := newTestSQLiteDB(t)
+	store := storage.NewSQLiteStore(db)
+	ctx := context.Background()
+	due := time.Now().UTC().Add(time.Hour)
+	created, err := store.CreateTask(ctx, task.NewTaskInput{
+		Title:  "Bad tags payload",
+		Status: task.StatusTodo,
+		DueAt:  due,
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	_, err = db.ExecContext(ctx, `UPDATE tasks SET tags = ? WHERE id = ?`, `{"not":"an-array"}`, created.ID)
+	if err != nil {
+		t.Fatalf("inject malformed tags JSON: %v", err)
+	}
+
+	if _, err := store.GetTask(ctx, created.ID); err == nil {
+		t.Fatal("expected GetTask to fail for malformed tags JSON")
+	}
+}
+

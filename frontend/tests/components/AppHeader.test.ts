@@ -34,5 +34,17 @@ describe('AppHeader', () => {
     await user.click(getByRole('button', { name: 'Open menu' }))
     expect(onToggleMenu).toHaveBeenCalledTimes(1)
   })
+
+  it('omits menu button when hideMenuButton is true', () => {
+    const { queryByRole } = render(AppHeader, {
+      props: {
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
+        hideMenuButton: true,
+      },
+    })
+
+    expect(queryByRole('button', { name: 'Open menu' })).toBeNull()
+  })
 })
 

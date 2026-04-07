@@ -12,6 +12,8 @@
   export let onSwipeCommitted: (() => void) | undefined = undefined
   /** Fired when the user taps the card (no horizontal swipe). */
   export let onOpen: (() => void) | undefined = undefined
+  /** Onboarding: mark host for `tour-spot-swipe` spotlight. */
+  export let tourSwipeAnchor = false
 
   let host: HTMLDivElement
   let width = 320
@@ -171,7 +173,7 @@
 {#if !enabled}
   <slot />
 {:else}
-  <div class="swipe-task-host" bind:this={host}>
+  <div class="swipe-task-host" bind:this={host} data-tour={tourSwipeAnchor ? 'tour-spot-swipe' : undefined}>
     <div
       class="swipe-task-under swipe-task-under--edit"
       aria-hidden="true"

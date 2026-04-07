@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Caseworker Task Manager API
   description: REST API for creating, listing, updating, and deleting caseworker tasks.
-  version: 1.0.0
+  version: 1.2.0
 
 servers:
   - url: http://localhost:8080

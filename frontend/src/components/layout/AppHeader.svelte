@@ -1,10 +1,13 @@
 <script lang="ts">
   import govLogo from '../../../assets/gov_uk.webp'
+  import HelpMenuTriggerButton from '../help/HelpMenuTriggerButton.svelte'
 
   export let menuOpen = false
   export let onToggleMenu: () => void
   /** When true (e.g. mobile expanded search), header is visually hidden; keep SR in sync. */
   export let ariaHidden = false
+  /** When true, menu control lives in the task toolbar (collapsed chrome). */
+  export let hideMenuButton = false
 </script>
 
 <header class="app-header" aria-hidden={ariaHidden ? true : undefined}>
@@ -20,21 +23,9 @@
         <p>Capture, prioritise, and complete tasks.</p>
       </div>
     </div>
-    <button
-      type="button"
-      class="btn-help"
-      class:btn-help--open={menuOpen}
-      on:click={onToggleMenu}
-      aria-expanded={menuOpen}
-      aria-haspopup="dialog"
-      aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-      title={menuOpen ? 'Close menu' : 'Open menu'}
-    >
-      <span class="btn-help-bars" aria-hidden="true">
-        <span class="btn-help-bar btn-help-bar--top"></span>
-        <span class="btn-help-bar btn-help-bar--bottom"></span>
-      </span>
-    </button>
+    {#if !hideMenuButton}
+      <HelpMenuTriggerButton {menuOpen} {onToggleMenu} />
+    {/if}
     </div>
   </div>
 </header>

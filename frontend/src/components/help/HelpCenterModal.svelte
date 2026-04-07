@@ -4,7 +4,7 @@
   import type { HelpTabId } from '../../lib/app/onboarding/types'
   import type { TourStepDef } from '../../lib/app/onboarding/types'
   import type { MotionPreference, SortKey, StartupViewMode, UiDensity } from '../../lib/app/types'
-  import { CHECKLIST_META } from '../../lib/app/onboarding/definitions'
+  import { CHECKLIST_META, checklistIdsForLayout } from '../../lib/app/onboarding/definitions'
   import { APP_VERSION } from '../../lib/app/appVersion'
   import { helpModalContentTransition } from '../../lib/ui/modalContentTransition'
   import ModalHeader from '../modals/ModalHeader.svelte'
@@ -55,7 +55,7 @@
   export let handleModalBackdropClick: (e: MouseEvent) => void
 
   $: progressPct = checklistTotal > 0 ? Math.round((100 * checklistDone) / checklistTotal) : 0
-  $: checklistRows = CHECKLIST_META.filter((m) => !isNarrow || m.id !== 'view_modes')
+  $: checklistRows = CHECKLIST_META.filter((m) => checklistIdsForLayout(isNarrow).includes(m.id))
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -196,8 +196,8 @@
           {/each}
         </div>
       {:else if helpActiveTab === 'settings'}
-        <div class="help-settings-grid">
-          <section class="help-settings-card" data-tour="theme">
+        <div class="help-settings-grid" data-tour="help-settings">
+          <section class="help-settings-card">
             <h3>Theme</h3>
             <p>Switch between light and dark mode for comfortable reading.</p>
             <button
@@ -216,7 +216,7 @@
               </span>
             </button>
           </section>
-          <section class="help-settings-card" data-tour="text-size">
+          <section class="help-settings-card">
             <h3>Text size</h3>
             <p>Choose one of six text scales with quick visual steps.</p>
             <div class="font-size-slider-wrap">
@@ -243,7 +243,7 @@
               </div>
             </div>
           </section>
-          <section class="help-settings-card" data-tour="density">
+          <section class="help-settings-card">
             <h3>Density</h3>
             <p>Use compact spacing to fit more content on small screens or web dashboards.</p>
             <div class="font-size-buttons" role="group" aria-label="Density options">
@@ -267,7 +267,7 @@
               </button>
             </div>
           </section>
-          <section class="help-settings-card" data-tour="motion">
+          <section class="help-settings-card">
             <h3>Motion</h3>
             <p>Reduce animation to improve accessibility, comfort, and battery usage.</p>
             <div class="font-size-buttons" role="group" aria-label="Motion options">
@@ -300,7 +300,7 @@
               </button>
             </div>
           </section>
-          <section class="help-settings-card" data-tour="startup-view">
+          <section class="help-settings-card">
             <h3>Startup view</h3>
             <p>Choose which view opens first, or remember your most recent view.</p>
             <label class="control-stack">
@@ -345,7 +345,7 @@
               </label>
             </div>
           </section>
-          <section class="help-settings-card" data-tour="restore-defaults">
+          <section class="help-settings-card">
             <h3>Restore defaults</h3>
             <p>Reset all settings in this panel to recommended defaults.</p>
             <button type="button" class="secondary" on:click={restoreDefaultSettings}>Restore defaults</button>

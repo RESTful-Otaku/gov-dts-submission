@@ -27,6 +27,11 @@ describe('TaskControlsBar', () => {
         onCollapseMobileSearch: vi.fn(),
         hasActiveFilters: false,
         onClearAllFilters: vi.fn(),
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
       },
     })
 
@@ -55,6 +60,11 @@ describe('TaskControlsBar', () => {
         onCollapseMobileSearch: vi.fn(),
         hasActiveFilters: false,
         onClearAllFilters: vi.fn(),
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
       },
     })
 
@@ -82,6 +92,11 @@ describe('TaskControlsBar', () => {
         onCollapseMobileSearch,
         hasActiveFilters: false,
         onClearAllFilters: vi.fn(),
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
       },
     })
 
@@ -107,6 +122,11 @@ describe('TaskControlsBar', () => {
       onCollapseMobileSearch,
       hasActiveFilters: false,
       onClearAllFilters: vi.fn(),
+      showBackToTop: false,
+      onScrollToTop: vi.fn(),
+      showMenuInToolbar: false,
+      menuOpen: false,
+      onToggleMenu: vi.fn(),
     })
 
     const input = document.querySelector('input.search-input') as HTMLInputElement | null
@@ -135,6 +155,11 @@ describe('TaskControlsBar', () => {
         onCollapseMobileSearch,
         hasActiveFilters: false,
         onClearAllFilters: vi.fn(),
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
       },
     })
 
@@ -164,6 +189,11 @@ describe('TaskControlsBar', () => {
         onCollapseMobileSearch: vi.fn(),
         hasActiveFilters: false,
         onClearAllFilters,
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
       },
     })
 
@@ -184,10 +214,135 @@ describe('TaskControlsBar', () => {
       onCollapseMobileSearch: vi.fn(),
       hasActiveFilters: true,
       onClearAllFilters,
+      showBackToTop: false,
+      onScrollToTop: vi.fn(),
+      showMenuInToolbar: false,
+      menuOpen: false,
+      onToggleMenu: vi.fn(),
     })
 
     await user.click(getByRole('button', { name: 'Clear all filters' }))
     expect(onClearAllFilters).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows back to top control when requested and invokes callback', async () => {
+    const user = userEvent.setup()
+    const onScrollToTop = vi.fn()
+
+    const { getByRole } = render(TaskControlsBar, {
+      props: {
+        isNarrow: false,
+        mobileSearchExpanded: false,
+        showFilters: false,
+        viewMode: 'cards',
+        searchTerm: '',
+        searchInput: null,
+        onCreateClick: vi.fn(),
+        onToggleFilters: vi.fn(),
+        onSetViewMode: vi.fn(),
+        onSearchTermChange: vi.fn(),
+        onExpandMobileSearch: vi.fn(),
+        onCollapseMobileSearch: vi.fn(),
+        hasActiveFilters: false,
+        onClearAllFilters: vi.fn(),
+        showBackToTop: true,
+        onScrollToTop,
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
+      },
+    })
+
+    await user.click(getByRole('button', { name: 'Back to top' }))
+    expect(onScrollToTop).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides back to top while mobile search is expanded even if showBackToTop is true', () => {
+    const { queryByRole } = render(TaskControlsBar, {
+      props: {
+        isNarrow: true,
+        mobileSearchExpanded: true,
+        showFilters: false,
+        viewMode: 'cards',
+        searchTerm: '',
+        searchInput: null,
+        onCreateClick: vi.fn(),
+        onToggleFilters: vi.fn(),
+        onSetViewMode: vi.fn(),
+        onSearchTermChange: vi.fn(),
+        onExpandMobileSearch: vi.fn(),
+        onCollapseMobileSearch: vi.fn(),
+        hasActiveFilters: false,
+        onClearAllFilters: vi.fn(),
+        showBackToTop: true,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
+      },
+    })
+
+    expect(queryByRole('button', { name: 'Back to top' })).toBeNull()
+  })
+
+  it('shows help menu in toolbar after filter when showMenuInToolbar is true', async () => {
+    const user = userEvent.setup()
+    const onToggleMenu = vi.fn()
+
+    const { getByRole } = render(TaskControlsBar, {
+      props: {
+        isNarrow: false,
+        mobileSearchExpanded: false,
+        showFilters: false,
+        viewMode: 'cards',
+        searchTerm: '',
+        searchInput: null,
+        onCreateClick: vi.fn(),
+        onToggleFilters: vi.fn(),
+        onSetViewMode: vi.fn(),
+        onSearchTermChange: vi.fn(),
+        onExpandMobileSearch: vi.fn(),
+        onCollapseMobileSearch: vi.fn(),
+        hasActiveFilters: false,
+        onClearAllFilters: vi.fn(),
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: true,
+        menuOpen: false,
+        onToggleMenu,
+      },
+    })
+
+    await user.click(getByRole('button', { name: 'Open menu' }))
+    expect(onToggleMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides toolbar menu while mobile search is expanded', () => {
+    const { queryByRole } = render(TaskControlsBar, {
+      props: {
+        isNarrow: true,
+        mobileSearchExpanded: true,
+        showFilters: false,
+        viewMode: 'cards',
+        searchTerm: '',
+        searchInput: null,
+        onCreateClick: vi.fn(),
+        onToggleFilters: vi.fn(),
+        onSetViewMode: vi.fn(),
+        onSearchTermChange: vi.fn(),
+        onExpandMobileSearch: vi.fn(),
+        onCollapseMobileSearch: vi.fn(),
+        hasActiveFilters: false,
+        onClearAllFilters: vi.fn(),
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: true,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
+      },
+    })
+
+    expect(queryByRole('button', { name: 'Open menu' })).toBeNull()
   })
 })
 

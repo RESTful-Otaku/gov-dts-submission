@@ -15,7 +15,11 @@ export type OnboardingStepId =
   | 'card_swipe'
   | 'search'
   | 'filters'
+  | 'filter_sort_demo'
   | 'view_modes'
+  | 'list_multiselect'
+  | 'list_bulk_delete'
+  | 'kanban_drag'
 
 export type HelpTabId = 'guide' | 'checklist' | 'sections' | 'settings' | 'about'
 

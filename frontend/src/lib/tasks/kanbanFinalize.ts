@@ -9,7 +9,7 @@ export async function finalizeKanbanColumnDrop(options: {
   setTasks: (next: Task[]) => void
   updateTaskStatus: (id: string, payload: { status: TaskStatus }) => Promise<Task>
   showToast: (message: string, type: ToastType) => void
-}): Promise<void> {
+}): Promise<boolean> {
   const { status, items, tasks, setTasks, updateTaskStatus, showToast } = options
   const previousTasks = [...tasks]
   setTasks(mergeColumnIntoTasks(tasks, status, items))
@@ -19,11 +19,13 @@ export async function finalizeKanbanColumnDrop(options: {
       try {
         await updateTaskStatus(item.id, { status })
         showToast('Status updated.', 'notification')
+        return true
       } catch (err) {
         setTasks(previousTasks)
         showToast(err instanceof Error ? err.message : 'Failed to update status', 'error')
+        return false
       }
-      break
     }
   }
+  return false
 }

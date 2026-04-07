@@ -43,6 +43,7 @@
   <div
     class="modal"
     class:modal--drawer={isNarrow}
+    class:modal--task-form={!isNarrow}
     role="document"
     on:keydown={(e) => e.key === 'Escape' && closeCreateModal()}
     transition:modalContentTransition={{ isNarrow }}

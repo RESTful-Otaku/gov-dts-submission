@@ -32,6 +32,7 @@
 
   onMount(() => {
     app.bootstrap()
+    return app.attachStickyChromeScroll()
   })
 </script>
 
@@ -41,6 +42,7 @@
   <div
     class="app-sticky-top"
     class:app-sticky-top--mobile-search-open={app.isNarrow && app.mobileSearchExpanded}
+    class:app-sticky-top--chrome-collapsed={app.stickyChromeCollapsed}
   >
     <div class="app-sticky-top__header-slot">
       <div class="app-sticky-top__header-inner">
@@ -51,6 +53,7 @@
             else app.openHelp('guide')
           }}
           ariaHidden={app.isNarrow && app.mobileSearchExpanded}
+          hideMenuButton={app.stickyChromeCollapsed}
         />
       </div>
     </div>
@@ -58,6 +61,8 @@
     <TaskControlsBar
       isNarrow={app.isNarrow}
       mobileSearchExpanded={app.mobileSearchExpanded}
+      showBackToTop={app.stickyChromeCollapsed}
+      onScrollToTop={() => app.scrollChromeToTop()}
       showFilters={app.showFilters}
       viewMode={app.viewMode}
       searchTerm={app.searchTerm}
@@ -70,6 +75,12 @@
       onSearchTermChange={(next) => (app.searchTerm = next)}
       onExpandMobileSearch={() => app.expandMobileSearch()}
       onCollapseMobileSearch={() => app.collapseMobileSearch()}
+      showMenuInToolbar={app.stickyChromeCollapsed}
+      menuOpen={app.helpModalOpen}
+      onToggleMenu={() => {
+        if (app.helpModalOpen) app.closeHelp()
+        else app.openHelp('guide')
+      }}
     />
 
     {#if app.showFilters}
@@ -122,6 +133,8 @@
       {#if app.viewMode === 'list'}
         <TasksListView
           isNarrow={app.isNarrow}
+          tourSpotlightStepId={app.tourSpotlightStepId}
+          tourAnchorTaskId={app.tourAnchorTaskId}
           visibleTasks={app.visibleTasks}
           listTasksDisplay={app.listTasksDisplay}
           selectedTaskIds={app.selectedTaskIds}
@@ -156,6 +169,8 @@
         <TasksKanbanView
           visibleTasks={app.visibleTasks}
           isNarrow={app.isNarrow}
+          tourSpotlightStepId={app.tourSpotlightStepId}
+          tourAnchorTaskId={app.tourAnchorTaskId}
           KANBAN_COLUMNS={KANBAN_COLUMNS}
           KANBAN_FLIP_MS={KANBAN_FLIP_MS}
           tasksForColumn={(s) => app.tasksForColumn(s)}
@@ -172,6 +187,8 @@
       {:else}
         <TasksCardsView
           isNarrow={app.isNarrow}
+          tourSpotlightStepId={app.tourSpotlightStepId}
+          tourAnchorTaskId={app.tourAnchorTaskId}
           visibleTasks={app.visibleTasks}
           priorityLabel={priorityLabel}
           statusLabel={statusLabel}
@@ -237,22 +254,6 @@
   />
 {/if}
 
-{#if app.tourRunning}
-  <TourCoachLayer
-    isNarrow={app.isNarrow}
-    mobileSearchExpanded={app.mobileSearchExpanded}
-    tourStepIndex={app.tourStepIndex}
-    tourSteps={app.tourSteps}
-    checklist={app.checklist}
-    checklistDone={app.checklistProgressState.done}
-    checklistTotal={app.checklistProgressState.total}
-    stopTour={() => app.stopTour()}
-    nextTourStep={() => app.nextTourStep()}
-    prevTourStep={() => app.prevTourStep()}
-    markOnboardingStep={(id) => app.markOnboardingStep(id)}
-  />
-{/if}
-
 {#if app.helpModalOpen}
   <HelpCenterModal
     isNarrow={app.isNarrow}
@@ -282,6 +283,22 @@
     replayTourFromStep={(id) => app.replayTourFromStep(id)}
     resetOnboardingProgress={() => app.resetOnboardingProgress()}
     handleModalBackdropClick={(e) => app.handleModalBackdropClick(e)}
+  />
+{/if}
+
+{#if app.tourRunning}
+  <TourCoachLayer
+    isNarrow={app.isNarrow}
+    mobileSearchExpanded={app.mobileSearchExpanded}
+    tourStepIndex={app.tourStepIndex}
+    tourSteps={app.tourSteps}
+    checklist={app.checklist}
+    checklistDone={app.checklistProgressState.done}
+    checklistTotal={app.checklistProgressState.total}
+    stopTour={() => app.stopTour()}
+    nextTourStep={() => app.nextTourStep()}
+    prevTourStep={() => app.prevTourStep()}
+    markOnboardingStep={(id) => app.markOnboardingStep(id)}
   />
 {/if}
 

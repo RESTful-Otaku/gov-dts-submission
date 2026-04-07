@@ -99,7 +99,10 @@ func (s *SQLiteStore) GetTask(ctx context.Context, id string) (*task.Task, error
 	if desc.Valid {
 		t.Description = &desc.String
 	}
-	tags, _ := ParseTagsJSON(tagsRaw)
+	tags, err := ParseTagsJSON(tagsRaw)
+	if err != nil {
+		return nil, err
+	}
 	t.Tags = tags
 	t.DueAt = t.DueAt.UTC()
 	t.CreatedAt = t.CreatedAt.UTC()
@@ -135,7 +138,10 @@ func (s *SQLiteStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.
 		if desc.Valid {
 			t.Description = &desc.String
 		}
-		tags, _ := ParseTagsJSON(tagsRaw)
+		tags, err := ParseTagsJSON(tagsRaw)
+		if err != nil {
+			return nil, err
+		}
 		t.Tags = tags
 		t.DueAt = t.DueAt.UTC()
 		t.CreatedAt = t.CreatedAt.UTC()

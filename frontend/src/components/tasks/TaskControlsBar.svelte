@@ -5,11 +5,15 @@
 <script lang="ts">
   import type { ViewMode } from '../../lib/app/types'
 
+  import HelpMenuTriggerButton from '../help/HelpMenuTriggerButton.svelte'
   import TaskSearchField from './TaskSearchField.svelte'
   import ViewModeToggle from './ViewModeToggle.svelte'
 
   export let isNarrow: boolean
   export let mobileSearchExpanded: boolean
+  /** Shown when sticky header branding is collapsed; hidden during narrow expanded search. */
+  export let showBackToTop = false
+  export let onScrollToTop: () => void = () => {}
   export let showFilters: boolean
   export let viewMode: ViewMode
   export let searchTerm: string
@@ -25,6 +29,13 @@
 
   export let hasActiveFilters: boolean
   export let onClearAllFilters: () => void
+
+  export let showMenuInToolbar = false
+  export let menuOpen = false
+  export let onToggleMenu: () => void = () => {}
+
+  $: backToTopVisible = showBackToTop && !(isNarrow && mobileSearchExpanded)
+  $: menuInToolbarVisible = showMenuInToolbar && !(isNarrow && mobileSearchExpanded)
 </script>
 
 <div
@@ -92,6 +103,20 @@
               >
                 <span class="filter-icon" aria-hidden="true"></span>
               </button>
+              {#if backToTopVisible}
+                <button
+                  type="button"
+                  class="btn-back-to-top btn-icon-compact"
+                  on:click|preventDefault|stopPropagation={onScrollToTop}
+                  aria-label="Back to top"
+                  title="Back to top"
+                >
+                  <span class="btn-icon-compact__icon" aria-hidden="true">↑</span>
+                </button>
+              {/if}
+              {#if menuInToolbarVisible}
+                <HelpMenuTriggerButton {menuOpen} {onToggleMenu} inToolbar />
+              {/if}
             </div>
           </div>
         </div>
@@ -144,6 +169,21 @@
         >
           <span class="filter-icon" aria-hidden="true"></span>
         </button>
+        {#if backToTopVisible}
+          <button
+            type="button"
+            class="btn-back-to-top btn-icon-compact"
+            on:click|preventDefault|stopPropagation={onScrollToTop}
+            aria-label="Back to top"
+            title="Back to top"
+          >
+            <span class="btn-icon-compact__icon" aria-hidden="true">↑</span>
+            <span class="btn-icon-compact__label btn-back-to-top__label">Top</span>
+          </button>
+        {/if}
+        {#if menuInToolbarVisible}
+          <HelpMenuTriggerButton {menuOpen} {onToggleMenu} inToolbar />
+        {/if}
       {/if}
     </div>
   </div>

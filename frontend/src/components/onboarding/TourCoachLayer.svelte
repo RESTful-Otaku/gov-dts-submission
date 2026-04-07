@@ -56,7 +56,7 @@
     isNarrow
     step?.id
     mobileSearchExpanded
-    tick().then(() => requestAnimationFrame(() => measure()))
+    tick().then(() => runMeasure(true))
   }
 
   $: {
@@ -90,7 +90,8 @@
     })
   }
 
-  function measure(): void {
+  /** `scrollIntoView` only when the step/layout changes — not on window scroll/resize (avoids fighting the user). */
+  function runMeasure(scrollTarget: boolean): void {
     clearSpotlightClass()
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -109,36 +110,56 @@
       return
     }
 
-    el.classList.add('onboarding-spotlight-target')
-    const r = el.getBoundingClientRect()
-    holeTop = r.top - PAD
-    holeLeft = r.left - PAD
-    holeW = r.width + PAD * 2
-    holeH = r.height + PAD * 2
+    const applyGeometry = (): void => {
+      const el2 = document.querySelector(`[data-tour="${safe}"]`)
+      if (!el2 || !(el2 instanceof HTMLElement)) {
+        useSpotlight = false
+        mobilePlacement = 'bottom'
+        return
+      }
 
-    const hl = Math.max(0, holeLeft)
-    const hr = Math.max(0, vw - holeLeft - holeW)
+      el2.classList.add('onboarding-spotlight-target')
+      const r = el2.getBoundingClientRect()
+      holeTop = r.top - PAD
+      holeLeft = r.left - PAD
+      holeW = r.width + PAD * 2
+      holeH = r.height + PAD * 2
 
-    useSpotlight = true
-    topH = Math.max(0, holeTop)
-    midTop = holeTop
-    midH = holeH
-    leftW = hl
-    rightLeft = holeLeft + holeW
-    rightW = hr
-    bottomTop = holeTop + holeH
-    bottomH = Math.max(0, vh - holeTop - holeH)
+      const hl = Math.max(0, holeLeft)
+      const hr = Math.max(0, vw - holeLeft - holeW)
 
-    const cy = holeTop + holeH / 2
-    if (isNarrow) {
-      mobilePlacement = cy > vh * 0.52 ? 'top' : 'bottom'
-      nudgeDir = mobilePlacement === 'top' ? 'down' : 'up'
-    } else {
-      nudgeDir = cy < vh * 0.45 ? 'down' : 'up'
+      useSpotlight = true
+      topH = Math.max(0, holeTop)
+      midTop = holeTop
+      midH = holeH
+      leftW = hl
+      rightLeft = holeLeft + holeW
+      rightW = hr
+      bottomTop = holeTop + holeH
+      bottomH = Math.max(0, vh - holeTop - holeH)
+
+      const cy = holeTop + holeH / 2
+      if (isNarrow) {
+        mobilePlacement = cy > vh * 0.52 ? 'top' : 'bottom'
+        nudgeDir = mobilePlacement === 'top' ? 'down' : 'up'
+      } else {
+        nudgeDir = cy < vh * 0.45 ? 'down' : 'up'
+      }
+
+      if (!isNarrow && !coachCollapsed) {
+        void tick().then(() => positionDesktopCoach(r))
+      }
     }
 
-    if (!isNarrow && !coachCollapsed) {
-      void tick().then(() => positionDesktopCoach(r))
+    if (scrollTarget) {
+      const block =
+        targetAttr === 'help-settings' || targetAttr === 'filter-sort' ? 'center' : 'nearest'
+      el.scrollIntoView({ block, inline: 'nearest', behavior: 'auto' })
+      requestAnimationFrame(() => {
+        requestAnimationFrame(applyGeometry)
+      })
+    } else {
+      applyGeometry()
     }
   }
 
@@ -171,7 +192,7 @@
       clearTimeout(collapseTimer)
       collapseTimer = null
     }
-    void tick().then(() => requestAnimationFrame(() => measure()))
+    void tick().then(() => runMeasure(false))
   }
 
   onDestroy(() => {
@@ -180,7 +201,7 @@
   })
 </script>
 
-<svelte:window on:scroll|capture={measure} on:resize={measure} />
+<svelte:window on:scroll|capture={() => runMeasure(false)} on:resize={() => runMeasure(false)} />
 
 {#if step}
 <div class="tour-coach-root" role="presentation">

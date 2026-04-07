@@ -1,5 +1,6 @@
 <script lang="ts">
   import { modalContentTransition } from '../../lib/ui/modalContentTransition'
+  import type { OnboardingStepId } from '../../lib/app/onboarding/types'
   import type { Task, TaskPriority, TaskStatus } from '../../lib/api'
   import SwipeableTaskMobile from './SwipeableTaskMobile.svelte'
   import TagChips from './TagChips.svelte'
@@ -22,6 +23,8 @@
   export let onOpenReader: (() => void) | undefined = undefined
   /** Optional: e.g. onboarding when user completes a swipe gesture on mobile. */
   export let onSwipeGesture: (() => void) | undefined = undefined
+  export let tourSpotlightStepId: OnboardingStepId | null = null
+  export let tourAnchorTaskId: string | null = null
 
   let readerTaskId: string | null = null
   $: readerTask = readerTaskId === null ? null : visibleTasks.find((t) => t.id === readerTaskId) ?? null
@@ -42,8 +45,16 @@
     <p class="empty">No tasks match your current search or filters.</p>
   {:else}
     {#each visibleTasks as taskItem}
+      {@const anchor = tourAnchorTaskId !== null && taskItem.id === tourAnchorTaskId}
+      {@const cardTourSpotlight =
+        anchor && tourSpotlightStepId === 'edit_task'
+          ? ('edit' as const)
+          : anchor && tourSpotlightStepId === 'delete_task'
+            ? ('delete' as const)
+            : null}
       <SwipeableTaskMobile
         enabled={isNarrow}
+        tourSwipeAnchor={anchor && tourSpotlightStepId === 'card_swipe'}
         onEdit={() => openEditModal(taskItem)}
         onDelete={() => handleDeleteTask(taskItem.id)}
         onSwipeCommitted={onSwipeGesture}
@@ -51,7 +62,11 @@
       >
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <article class="task" on:click={() => !isNarrow && openReader(taskItem.id)}>
+        <article
+          class="task"
+          data-tour={anchor && tourSpotlightStepId === 'open_task_reader' ? 'tour-spot-open' : undefined}
+          on:click={() => !isNarrow && openReader(taskItem.id)}
+        >
           <header class="task-header">
             <h3>{taskItem.title}</h3>
             <div class="task-badges">
@@ -84,6 +99,7 @@
 
           <TaskCardActions
             stopPropagation={!isNarrow}
+            tourSpotlight={cardTourSpotlight}
             onEdit={() => openEditModal(taskItem)}
             onDelete={() => handleDeleteTask(taskItem.id)}
             deleteTitle={`Delete task ${taskItem.title}`}

@@ -68,6 +68,8 @@ const DEMO_TEMPLATES: SeedTemplate[] = [
   { title: 'Chase outstanding disclosure', description: 'Follow up on any outstanding disclosure items.', status: 'in_progress', priority: 'normal', owner: 'Priya Patel', tags: ['disclosure', 'compliance', 'follow-up'], dueDays: 70 },
   { title: 'Pre-hearing review', description: 'Complete pre-hearing review and checklist.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['hearing', 'review', 'checklist'], dueDays: 77 },
   { title: 'Close case and archive', description: 'Final closure and archive once all steps complete.', status: 'todo', priority: 'low', owner: 'James Wilson', tags: ['archive', 'closure', 'completion'], dueDays: 84 },
+  { title: 'Verify service of documents', description: 'Confirm all parties have been properly served with required documents.', status: 'in_progress', priority: 'normal', owner: 'Priya Patel', tags: ['service', 'compliance', 'documents'], dueDays: 6 },
+  { title: 'Prepare post-hearing follow-up', description: 'Draft and schedule follow-up actions arising from the hearing outcome.', status: 'todo', priority: 'high', owner: 'Sarah Chen', tags: ['hearing', 'follow-up', 'actions'], dueDays: 2 },
 ]
 
 function nowIso(): string {

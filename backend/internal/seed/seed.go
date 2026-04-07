@@ -88,6 +88,8 @@ func DemoTasksStore(ctx context.Context, store storage.Store) error {
 		{"Chase outstanding disclosure", "Follow up on any outstanding disclosure items.", task.StatusInProgress, task.PriorityNormal, "Priya Patel", []string{"disclosure", "compliance", "follow-up"}, 70},
 		{"Pre-hearing review", "Complete pre-hearing review and checklist.", task.StatusTodo, task.PriorityNormal, "Sarah Chen", []string{"hearing", "review", "checklist"}, 77},
 		{"Close case and archive", "Final closure and archive once all steps complete.", task.StatusTodo, task.PriorityLow, "James Wilson", []string{"archive", "closure", "completion"}, 84},
+		{"Update Universal Credit claimant record", "Verify recent change of circumstances and update claimant details in the system.", task.StatusTodo, task.PriorityLow, "Jonathan Harrison", []string{"dwp", "universal-credit", "case-management"}, 69},
+		{"Process court fee remission application", "Review submitted EX160 form and supporting evidence to determine eligibility for fee remission.", task.StatusTodo, task.PriorityNormal, "Jonathan Harrison", []string{"hmcts", "fees", "remission", "eligibility"}, 72},
 	}
 
 	rnd := rand.New(rand.NewSource(now.UnixNano()))

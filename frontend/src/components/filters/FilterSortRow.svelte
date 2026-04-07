@@ -9,7 +9,7 @@
   export let sortAscending: boolean
 </script>
 
-<div class="sort-controls">
+<div class="sort-controls" data-tour="filter-sort">
   <span class="control-label">Sort</span>
   <select bind:value={sortKey} aria-label="Sort tasks by">
     <option value="due">Due date and time</option>
