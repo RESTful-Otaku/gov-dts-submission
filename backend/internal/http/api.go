@@ -928,7 +928,34 @@ func (s *Server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		pat := "%" + query + "%"
 		args = append(args, pat, pat, pat, pat, pat)
 	}
-	sqlQ := `SELECT id, user_id, username, action, entity_type, entity_id, changed_fields, COALESCE(before_json, ''), COALESCE(after_json, ''), raw_json, created_at FROM audit_logs` + where + ` ORDER BY ` + sortCol + ` ` + order + ` LIMIT ?`
+	orderClause := " ORDER BY created_at DESC "
+	switch sortCol {
+	case "username":
+		if order == "ASC" {
+			orderClause = " ORDER BY username ASC "
+		} else {
+			orderClause = " ORDER BY username DESC "
+		}
+	case "action":
+		if order == "ASC" {
+			orderClause = " ORDER BY action ASC "
+		} else {
+			orderClause = " ORDER BY action DESC "
+		}
+	case "changed_fields":
+		if order == "ASC" {
+			orderClause = " ORDER BY changed_fields ASC "
+		} else {
+			orderClause = " ORDER BY changed_fields DESC "
+		}
+	default:
+		if order == "ASC" {
+			orderClause = " ORDER BY created_at ASC "
+		} else {
+			orderClause = " ORDER BY created_at DESC "
+		}
+	}
+	sqlQ := `SELECT id, user_id, username, action, entity_type, entity_id, changed_fields, COALESCE(before_json, ''), COALESCE(after_json, ''), raw_json, created_at FROM audit_logs` + where + orderClause + ` LIMIT ?`
 	args = append(args, limit)
 	rows, err := s.queryDB(r.Context(), sqlQ, args...)
 	if err != nil {
@@ -1142,7 +1169,7 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 			_, _ = s.execDB(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, hashToken(cookie.Value))
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: true})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1475,8 +1502,52 @@ func (s *Server) handleUsersCollection(w http.ResponseWriter, r *http.Request) {
 			writeErrorCode(w, http.StatusInternalServerError, "failed to list users", "internal_error")
 			return
 		}
-		dataQ := `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users` + where +
-			` ORDER BY ` + sortCol + ` ` + order + ` LIMIT ? OFFSET ?`
+		orderClause := " ORDER BY created_at DESC "
+		switch sortCol {
+		case "updated_at":
+			if order == "ASC" {
+				orderClause = " ORDER BY updated_at ASC "
+			} else {
+				orderClause = " ORDER BY updated_at DESC "
+			}
+		case "email":
+			if order == "ASC" {
+				orderClause = " ORDER BY email ASC "
+			} else {
+				orderClause = " ORDER BY email DESC "
+			}
+		case "username":
+			if order == "ASC" {
+				orderClause = " ORDER BY username ASC "
+			} else {
+				orderClause = " ORDER BY username DESC "
+			}
+		case "first_name":
+			if order == "ASC" {
+				orderClause = " ORDER BY first_name ASC "
+			} else {
+				orderClause = " ORDER BY first_name DESC "
+			}
+		case "last_name":
+			if order == "ASC" {
+				orderClause = " ORDER BY last_name ASC "
+			} else {
+				orderClause = " ORDER BY last_name DESC "
+			}
+		case "role":
+			if order == "ASC" {
+				orderClause = " ORDER BY role ASC "
+			} else {
+				orderClause = " ORDER BY role DESC "
+			}
+		default:
+			if order == "ASC" {
+				orderClause = " ORDER BY created_at ASC "
+			} else {
+				orderClause = " ORDER BY created_at DESC "
+			}
+		}
+		dataQ := `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users` + where + orderClause + ` LIMIT ? OFFSET ?`
 		args = append(args, limit, offset)
 		rows, err := s.queryDB(r.Context(), dataQ, args...)
 		if err != nil {

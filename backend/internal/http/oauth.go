@@ -141,7 +141,7 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, oauthFrontendRedirectURL("oauth_state_mismatch"), http.StatusFound)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "dts_oauth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "dts_oauth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: true})
 	if code == "" || state == "" {
 		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("redirect")), "false") {
 			writeErrorCode(w, http.StatusBadRequest, "oauth callback requires code and state", "oauth_callback_invalid")

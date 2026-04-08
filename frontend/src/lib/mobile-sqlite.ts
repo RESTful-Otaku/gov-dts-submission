@@ -82,7 +82,14 @@ function generateId(): string {
     return crypto.randomUUID()
   }
 
-  const rand = Math.random().toString(36).slice(2, 10)
+  const bytes = new Uint8Array(8)
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes)
+  } else {
+    // Last-resort fallback for unusual runtimes without Web Crypto.
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (Date.now() + i) & 0xff
+  }
+  const rand = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
   return `task-${Date.now()}-${rand}`
 }
 
