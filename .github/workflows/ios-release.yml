@@ -15,6 +15,8 @@ jobs:
   release-ios:
     name: Build and Release iOS App
     runs-on: macos-latest
+    env:
+      IOS_EXPORT_OPTIONS_PLIST_B64: ${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,10 +121,8 @@ jobs:
 
       - name: Build and export iOS IPA (optional)
         id: ipa_artifact
-        if: ${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 != '' }}
+        if: ${{ env.IOS_EXPORT_OPTIONS_PLIST_B64 != '' }}
         shell: bash
-        env:
-          IOS_EXPORT_OPTIONS_PLIST_B64: ${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 }}
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.tag }}"
