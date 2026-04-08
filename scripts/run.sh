@@ -307,17 +307,22 @@ run_local() {
     ensure_postgres || exit 1
     export DB_DRIVER=pgx
     export DB_DSN="${DB_DSN:-postgres://postgres:postgres@127.0.0.1:5432/tasks?sslmode=disable}"
+    unset VITE_AUTH_REQUIRED
   elif [[ "$db" == "MariaDB" ]]; then
     ensure_mariadb || exit 1
     export DB_DRIVER=mariadb
     export DB_DSN="${DB_DSN:-ci:ci_password@tcp(127.0.0.1:3306)/tasks?parseTime=true&charset=utf8mb4&loc=UTC&timeout=10s&readTimeout=5s&writeTimeout=5s}"
+    unset VITE_AUTH_REQUIRED
   elif [[ "$db" == "MongoDB" ]]; then
     ensure_mongo || exit 1
     export MONGO_URI="${MONGO_URI:-mongodb://127.0.0.1:27017}"
     export MONGO_DATABASE="${MONGO_DATABASE:-tasks}"
+    # Mongo API mode currently does not expose SQL auth/session endpoints; run UI in guest mode.
+    export VITE_AUTH_REQUIRED="false"
   else
     export DB_DRIVER=sqlite3
     unset DB_DSN
+    unset VITE_AUTH_REQUIRED
   fi
 
   export HTTP_PORT="${HTTP_PORT:-8080}"
