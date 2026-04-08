@@ -110,15 +110,26 @@ jobs:
           MARIADB_ROOT_HOST: "%"
         ports:
           - 3306:3306
-        options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -ppassword --connect-timeout=2 --silent || exit 1"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 30
-          --health-start-period 45s
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Wait for MariaDB readiness
+        env:
+          MARIADB_CONTAINER_ID: ${{ job.services.mariadb.id }}
+        run: |
+          set -euo pipefail
+          echo "Waiting for MariaDB container: ${MARIADB_CONTAINER_ID}"
+          for i in {1..120}; do
+            if docker exec "${MARIADB_CONTAINER_ID}" mariadb-admin ping -h 127.0.0.1 -uroot -ppassword --silent >/dev/null 2>&1; then
+              echo "MariaDB is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MariaDB did not become ready in time. Recent logs:"
+          docker logs "${MARIADB_CONTAINER_ID}" || true
+          exit 1
 
       - name: Install SQLite (CGO)
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
