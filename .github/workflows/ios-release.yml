@@ -74,14 +74,12 @@ jobs:
           REPO_SECRET: ${{ secrets.VITE_MOBILE_DB_SECRET }}
         run: |
           set -euo pipefail
-          default="gov-dts-mobile-sqlcipher-local-dev-not-for-store"
           echo "VITE_MOBILE_LOCAL_DB=true" >> "$GITHUB_ENV"
-          if [[ -n "${REPO_SECRET}" ]]; then
-            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${REPO_SECRET}" >> "$GITHUB_ENV"
-          else
-            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${default}" >> "$GITHUB_ENV"
-            echo "::notice::Repository secret VITE_MOBILE_DB_SECRET is not set; using the public dev placeholder. Set the secret for a production-grade SQLCipher key."
+          if [[ -z "${REPO_SECRET}" ]]; then
+            echo "::error::Required secret VITE_MOBILE_DB_SECRET is not set. Refusing to build release artifact with a placeholder SQLCipher key."
+            exit 1
           fi
+          printf 'VITE_MOBILE_DB_SECRET=%s\n' "${REPO_SECRET}" >> "$GITHUB_ENV"
 
       - name: Build web assets (pre-production local DB mode)
         working-directory: frontend

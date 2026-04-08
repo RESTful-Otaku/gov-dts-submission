@@ -111,7 +111,7 @@ If you prefer running pieces manually (for debugging or CI parity), see `backend
 - Native SQLite mode (`VITE_MOBILE_LOCAL_DB=true`) inlines `VITE_MOBILE_DB_SECRET` at **build** time for SQLCipher.
 - **Local / scripts:** `source scripts/lib.sh` and run `gov_dts_export_vite_mobile_local_db_env` before `bun run build`, or set `VITE_MOBILE_DB_SECRET` yourself (override the default from `GOV_DTS_MOBILE_DB_SECRET_DEFAULT` in `scripts/lib.sh`).
 - **API-backed native builds** (e.g. `scripts/run-android.sh` with `VITE_API_BASE=http://10.0.2.2:8081`): the app uses HTTP, not SQLCipher; `run-android.sh` sets `VITE_MOBILE_LOCAL_DB=false`, and if the flag is unset, a non-empty `VITE_API_BASE` at build time also selects remote API mode.
-- **GitHub Actions (Android/iOS release + simulator artifact):** set repository secret **`VITE_MOBILE_DB_SECRET`** to a strong passphrase; if unset, workflows use a documented public dev placeholder and emit a notice.
+- **GitHub Actions (Android/iOS release + simulator artifact):** set repository secret **`VITE_MOBILE_DB_SECRET`** to a strong passphrase; if unset, workflows now **fail fast** and do not produce artifacts.
 
 ## Web app
 

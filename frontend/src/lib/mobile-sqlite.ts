@@ -45,7 +45,7 @@ async function ensureEncryptionSecret(sqlite: SQLiteConnection): Promise<void> {
   const secret = getMobileDbSecret()
   const sqliteAny = sqlite as unknown as {
     isSecretStored?: () => Promise<{ result?: boolean }>
-    setEncryptionSecret?: (input: { passphrase: string }) => Promise<void>
+    setEncryptionSecret?: (input: { passphrase: string } | string) => Promise<void>
     changeEncryptionSecret?: (input: { passphrase: string; oldpassphrase: string }) => Promise<void>
   }
 
@@ -56,7 +56,16 @@ async function ensureEncryptionSecret(sqlite: SQLiteConnection): Promise<void> {
   if (!sqliteAny.setEncryptionSecret) {
     throw new Error('SQLite encryption secret API is unavailable on this platform build')
   }
-  await sqliteAny.setEncryptionSecret({ passphrase: secret })
+  // Plugin API shape differs across platforms/builds:
+  // - some expect raw string
+  // - others expect { passphrase: string }
+  // Try string first to avoid nested passphrase payloads on Android bridge logs.
+  try {
+    await sqliteAny.setEncryptionSecret(secret)
+    return
+  } catch {
+    await sqliteAny.setEncryptionSecret({ passphrase: secret })
+  }
 }
 
 const META_SEED_DEMO_V3 = 'seed_local_demo_v3'

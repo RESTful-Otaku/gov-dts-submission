@@ -19,6 +19,7 @@ const config: CapacitorConfig = {
   plugins: {
     CapacitorSQLite: {
       androidIsEncryption: true,
+      iosIsEncryption: true,
     },
   },
 }

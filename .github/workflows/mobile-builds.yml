@@ -76,10 +76,34 @@ jobs:
               - 'frontend/svelte.config.js'
               - 'frontend/vite.config.ts'
 
+  mobile-sqlcipher-secret-preflight:
+    name: Mobile SQLCipher secret preflight
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.android == 'true' || needs.changes.outputs.ios == 'true'
+    steps:
+      - name: Validate release secret is configured (non-PR runs)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO_SECRET: ${{ secrets.VITE_MOBILE_DB_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            echo "PR run detected; skipping repository secret enforcement."
+            exit 0
+          fi
+          if [[ -z "${REPO_SECRET}" ]]; then
+            echo "::error::Required repository secret VITE_MOBILE_DB_SECRET is not set."
+            echo "::error::Mobile release/simulator artifact workflows will fail until this secret is configured."
+            exit 1
+          fi
+          echo "VITE_MOBILE_DB_SECRET is configured."
+
   android:
     name: Android
     runs-on: ubuntu-latest
-    needs: [changes]
+    needs: [changes, mobile-sqlcipher-secret-preflight]
     if: needs.changes.outputs.android == 'true'
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +158,7 @@ jobs:
   ios:
     name: iOS
     runs-on: macos-latest
-    needs: [changes]
+    needs: [changes, mobile-sqlcipher-secret-preflight]
     if: needs.changes.outputs.ios == 'true'
     steps:
       - uses: actions/checkout@v4
