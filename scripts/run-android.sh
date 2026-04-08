@@ -229,14 +229,31 @@ sync_avd_with_device_profile() {
 
 setup_android_sdk() {
   local need_sdk_install=0
+  local default_user_sdk="$HOME/Android/Sdk"
 
   if [[ -d "$HOME/.config/.android/avd" ]] && [[ -d "$HOME/.config/.android/avd/${AVD_NAME}.avd" ]]; then
     export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
   fi
 
+  # If SDK is pointed at a system path (e.g. /opt/android-sdk) and is not writable,
+  # prefer a per-user SDK so local setup can run without sudo.
+  if [[ -n "${ANDROID_SDK_DIR:-}" ]] && [[ ! -w "$ANDROID_SDK_DIR" ]]; then
+    if [[ "$ANDROID_SDK_DIR" != "$default_user_sdk" ]]; then
+      echo "Android SDK path is not writable: $ANDROID_SDK_DIR"
+      echo "Falling back to user SDK location: $default_user_sdk"
+      ANDROID_SDK_DIR="$default_user_sdk"
+    fi
+  fi
+
   if [[ -n "${ANDROID_HOME:-}" ]] && command -v adb &>/dev/null && command -v emulator &>/dev/null; then
     echo "Android SDK found at ANDROID_HOME=$ANDROID_HOME"
     ANDROID_SDK_DIR="$ANDROID_HOME"
+    if [[ ! -w "$ANDROID_SDK_DIR" && "$ANDROID_SDK_DIR" != "$default_user_sdk" ]]; then
+      echo "ANDROID_HOME is read-only ($ANDROID_SDK_DIR); using user SDK at $default_user_sdk"
+      ANDROID_SDK_DIR="$default_user_sdk"
+      export ANDROID_HOME="$ANDROID_SDK_DIR"
+      export ANDROID_SDK_ROOT="$ANDROID_SDK_DIR"
+    fi
   else
     export ANDROID_HOME="$ANDROID_SDK_DIR"
     export ANDROID_SDK_ROOT="$ANDROID_SDK_DIR"
@@ -253,6 +270,11 @@ setup_android_sdk() {
   print_section "Installing Android SDK"
 
   if [[ ! -x "$ANDROID_SDK_DIR/cmdline-tools/latest/bin/sdkmanager" ]] && [[ ! -x "$ANDROID_SDK_DIR/cmdline-tools/bin/sdkmanager" ]]; then
+    if [[ ! -w "$ANDROID_SDK_DIR" ]] && [[ ! -w "$(dirname "$ANDROID_SDK_DIR")" ]]; then
+      echo "Android SDK directory is not writable: $ANDROID_SDK_DIR" >&2
+      echo "Set ANDROID_HOME/ANDROID_SDK_ROOT to a user-writable path (e.g. $HOME/Android/Sdk)." >&2
+      exit 1
+    fi
     echo "Downloading Android command-line tools..."
     mkdir -p "$ANDROID_SDK_DIR"
     local tmpdir tmpzip
