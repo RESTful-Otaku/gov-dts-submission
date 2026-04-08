@@ -52,7 +52,7 @@
     return relaxOpacity ? first : null
   }
 
-  let helpRemeasureTimers: ReturnType<typeof setTimeout>[] = []
+  let helpRemeasureTimers: number[] = []
   function clearHelpRemeasureTimers(): void {
     for (const t of helpRemeasureTimers) clearTimeout(t)
     helpRemeasureTimers = []
