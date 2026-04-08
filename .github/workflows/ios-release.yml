@@ -131,8 +131,25 @@ jobs:
           EXPORT_DIR="$RUNNER_TEMP/ios-export"
           OUT_IPA="gov-case-tracker-ios-${TAG}.ipa"
           OUT_SUM="${OUT_IPA}.sha256"
+          python3 - <<'PY'
+          import base64
+          import os
+          import pathlib
+          import sys
 
-          echo "$IOS_EXPORT_OPTIONS_PLIST_B64" | base64 --decode > "$EXPORT_PLIST"
+          raw = os.environ.get("IOS_EXPORT_OPTIONS_PLIST_B64", "")
+          compact = "".join(raw.split())
+          if not compact:
+              print("::error::IOS_EXPORT_OPTIONS_PLIST_B64 is empty.")
+              sys.exit(1)
+          try:
+              decoded = base64.b64decode(compact, validate=True)
+          except Exception as exc:
+              print(f"::error::IOS_EXPORT_OPTIONS_PLIST_B64 is not valid Base64: {exc}")
+              sys.exit(1)
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ExportOptions.plist"
+          out.write_bytes(decoded)
+          PY
 
           rm -rf "$ARCHIVE_PATH" "$EXPORT_DIR"
           mkdir -p "$EXPORT_DIR"
