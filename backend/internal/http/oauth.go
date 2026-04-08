@@ -342,11 +342,11 @@ func stringField(raw map[string]any, key string) string {
 func (s *Server) upsertOAuthUser(ctx context.Context, in authUser) (*authUser, bool, error) {
 	var u authUser
 	var role string
-	row := s.db.QueryRowContext(ctx, `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE email = ?`, in.Email)
+	row := s.queryRowDB(ctx, `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE email = ?`, in.Email)
 	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.FirstName, &u.LastName, &role, &u.CreatedAt, &u.UpdatedAt); err == nil {
 		u.Role = parseUserRole(role)
 		if in.Username != "" && in.Username != u.Username {
-			_, _ = s.db.ExecContext(ctx, `UPDATE users SET username = ?, updated_at = ? WHERE id = ?`, in.Username, time.Now().UTC(), u.ID)
+			_, _ = s.execDB(ctx, `UPDATE users SET username = ?, updated_at = ? WHERE id = ?`, in.Username, time.Now().UTC(), u.ID)
 			u.Username = in.Username
 		}
 		return &u, false, nil
@@ -366,7 +366,7 @@ func (s *Server) upsertOAuthUser(ctx context.Context, in authUser) (*authUser, b
 	if firstName == "" {
 		firstName = in.Username
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO users (id, email, username, first_name, last_name, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'viewer', ?, ?)`, id, in.Email, in.Username, firstName, lastName, hash, now, now)
+	_, err = s.execDB(ctx, `INSERT INTO users (id, email, username, first_name, last_name, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'viewer', ?, ?)`, id, in.Email, in.Username, firstName, lastName, hash, now, now)
 	if err != nil {
 		return nil, false, err
 	}

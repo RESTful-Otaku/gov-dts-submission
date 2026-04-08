@@ -33,7 +33,7 @@ func MigrateMariaDB(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
-	const q = `
+	const createTasks = `
 CREATE TABLE IF NOT EXISTS tasks (
 	id CHAR(36) NOT NULL PRIMARY KEY,
 	title VARCHAR(255) NOT NULL,
@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 	due_at DATETIME(6) NOT NULL,
 	created_at DATETIME(6) NOT NULL,
 	updated_at DATETIME(6) NOT NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB;`
+	const createUsers = `
 CREATE TABLE IF NOT EXISTS users (
 	id CHAR(36) NOT NULL PRIMARY KEY,
 	email VARCHAR(255) NOT NULL UNIQUE,
@@ -56,7 +57,8 @@ CREATE TABLE IF NOT EXISTS users (
 	role VARCHAR(16) NOT NULL DEFAULT 'viewer',
 	created_at DATETIME(6) NOT NULL,
 	updated_at DATETIME(6) NOT NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB;`
+	const createSessions = `
 CREATE TABLE IF NOT EXISTS sessions (
 	id CHAR(36) NOT NULL PRIMARY KEY,
 	user_id CHAR(36) NOT NULL,
@@ -67,7 +69,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 	CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 `
-	_, err := db.ExecContext(ctx, q)
+	if _, err := db.ExecContext(ctx, createTasks); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, createUsers); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, createSessions)
 	return err
 }
 

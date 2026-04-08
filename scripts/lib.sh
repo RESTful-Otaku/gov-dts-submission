@@ -479,6 +479,7 @@ gov_dts_mariadb_port_ready() {
     fi
   fi
   if command -v mysqladmin >/dev/null 2>&1; then
+    mysqladmin ping -h 127.0.0.1 -P 3306 -uci -pci_password >/dev/null 2>&1 && return 0
     mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -ppassword >/dev/null 2>&1 && return 0
   fi
   return 1

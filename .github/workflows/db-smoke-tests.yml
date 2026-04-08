@@ -101,7 +101,7 @@ jobs:
       CGO_CFLAGS: "-Wno-discarded-qualifiers"
     services:
       mariadb:
-        image: mariadb:12.2.2
+        image: mariadb:11.4
         env:
           MARIADB_DATABASE: tasks
           MARIADB_USER: ci
@@ -111,11 +111,11 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uci -pci_password"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 20
-          --health-start-period 30s
+          --health-retries 30
+          --health-start-period 45s
 
     steps:
       - uses: actions/checkout@v4

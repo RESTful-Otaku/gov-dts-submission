@@ -48,6 +48,7 @@ services:
       POSTGRES_DB: tasks
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
     volumes:
@@ -64,6 +65,8 @@ services:
       - mariadb
     environment:
       MARIADB_DATABASE: tasks
+      MARIADB_USER: ci
+      MARIADB_PASSWORD: ci_password
       MARIADB_ROOT_PASSWORD: password
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:

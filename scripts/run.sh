@@ -250,7 +250,7 @@ ensure_mariadb() {
   start_spinner "Waiting for MariaDB on 127.0.0.1:3306..."
   local i=0
   while (( i < 90 )); do
-    if (cd "$ROOT" && docker compose --profile mariadb exec -T mariadb healthcheck.sh --connect --innodb_initialized) >/dev/null 2>&1; then
+    if gov_dts_mariadb_port_ready; then
       stop_spinner
       ok "MariaDB is ready"
       sleep 2
@@ -310,7 +310,7 @@ run_local() {
   elif [[ "$db" == "MariaDB" ]]; then
     ensure_mariadb || exit 1
     export DB_DRIVER=mariadb
-    export DB_DSN="${DB_DSN:-root:password@tcp(127.0.0.1:3306)/tasks?parseTime=true&charset=utf8mb4&loc=UTC&timeout=10s&readTimeout=5s&writeTimeout=5s}"
+    export DB_DSN="${DB_DSN:-ci:ci_password@tcp(127.0.0.1:3306)/tasks?parseTime=true&charset=utf8mb4&loc=UTC&timeout=10s&readTimeout=5s&writeTimeout=5s}"
   elif [[ "$db" == "MongoDB" ]]; then
     ensure_mongo || exit 1
     export MONGO_URI="${MONGO_URI:-mongodb://127.0.0.1:27017}"
