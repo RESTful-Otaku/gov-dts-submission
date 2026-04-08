@@ -21,7 +21,9 @@ import { hashPasswordArgon2id, verifyPasswordArgon2id } from './local-auth-passw
 
 const DB_NAME = 'taskmanager'
 const DB_VERSION = 1
-const ENCRYPTION_MODE = 'encryption'
+// SQLCipher mode for app-owned encrypted DBs created from scratch.
+// "encryption" expects migrating an existing plaintext DB and fails when file does not yet exist.
+const ENCRYPTION_MODE = 'secret'
 /** Arg 2 of createConnection: use SQLCipher encryption. */
 const USE_SQLCIPHER_ENCRYPTION = true
 /** Arg 5 of createConnection / isConnection / retrieveConnection: false = read-write. */

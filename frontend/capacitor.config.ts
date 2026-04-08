@@ -20,6 +20,8 @@ const config: CapacitorConfig = {
     CapacitorSQLite: {
       androidIsEncryption: true,
       iosIsEncryption: true,
+      // Required by iOS keychain-backed secret storage; missing prefix causes setEncryptionSecret failures.
+      iosKeychainPrefix: 'uk.gov.caseworker.taskmanager',
     },
   },
 }
