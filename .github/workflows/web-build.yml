@@ -43,7 +43,7 @@ on:
 
 jobs:
   web:
-    name: Web
+    name: web-build
     runs-on: ubuntu-latest
     env:
       CI: "true"

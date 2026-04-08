@@ -253,3 +253,27 @@ jobs:
         working-directory: backend
         run: |
           go test -count=1 ./tests/storage -run 'TestSQLiteStore'
+
+  db-smoke-tests:
+    name: db-smoke-tests
+    runs-on: ubuntu-latest
+    needs: [backend, postgres, mariadb, mongodb, sqlite]
+    if: always()
+    steps:
+      - name: Verify DB smoke matrix succeeded
+        shell: bash
+        run: |
+          set -euo pipefail
+          results=(
+            "${{ needs.backend.result }}"
+            "${{ needs.postgres.result }}"
+            "${{ needs.mariadb.result }}"
+            "${{ needs.mongodb.result }}"
+            "${{ needs.sqlite.result }}"
+          )
+          for r in "${results[@]}"; do
+            if [[ "$r" != "success" ]]; then
+              echo "DB smoke suite did not fully succeed: ${results[*]}"
+              exit 1
+            fi
+          done
