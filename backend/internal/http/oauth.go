@@ -340,6 +340,35 @@ func stringField(raw map[string]any, key string) string {
 }
 
 func (s *Server) upsertOAuthUser(ctx context.Context, in authUser) (*authUser, bool, error) {
+	if s.mongoAuth != nil {
+		if u, _, err := s.mongoGetUserByEmail(ctx, in.Email); err == nil {
+			if in.Username != "" && in.Username != u.Username {
+				_, _ = s.mongoUpdateUserByID(ctx, u.ID, u.Email, in.Username, u.FirstName, u.LastName, u.Role, time.Now().UTC())
+				u.Username = in.Username
+			}
+			return u, false, nil
+		}
+		password, err := makeSessionToken()
+		if err != nil {
+			return nil, false, err
+		}
+		hash, err := hashPassword(password)
+		if err != nil {
+			return nil, false, err
+		}
+		now := time.Now().UTC()
+		id := uuid.New().String()
+		firstName := strings.TrimSpace(in.FirstName)
+		lastName := strings.TrimSpace(in.LastName)
+		if firstName == "" {
+			firstName = in.Username
+		}
+		u := authUser{ID: id, Email: in.Email, Username: in.Username, FirstName: firstName, LastName: lastName, Role: roleViewer, CreatedAt: now, UpdatedAt: now}
+		if err := s.mongoCreateUser(ctx, u, hash); err != nil {
+			return nil, false, err
+		}
+		return &u, true, nil
+	}
 	var u authUser
 	var role string
 	row := s.queryRowDB(ctx, `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE email = ?`, in.Email)

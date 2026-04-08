@@ -29,6 +29,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	if strings.TrimSpace(os.Getenv("APP_ENV")) == "" && cfg != nil && strings.TrimSpace(cfg.Env) != "" {
+		_ = os.Setenv("APP_ENV", strings.TrimSpace(cfg.Env))
+	}
 
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
@@ -70,9 +73,12 @@ func main() {
 		}
 	}
 
-	apiServer := httpapi.NewServerWithStore(store, func(c context.Context) error {
+	apiServer := httpapi.NewServerWithStoreAndMongoAuth(store, func(c context.Context) error {
 		return client.Ping(c, nil)
-	})
+	}, client, mongoDB)
+	if err := apiServer.BootstrapSQLAuthArtifacts(ctx); err != nil {
+		log.Fatalf("bootstrap auth schema: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	apiServer.RegisterRoutes(mux)

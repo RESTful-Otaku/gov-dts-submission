@@ -317,8 +317,7 @@ run_local() {
     ensure_mongo || exit 1
     export MONGO_URI="${MONGO_URI:-mongodb://127.0.0.1:27017}"
     export MONGO_DATABASE="${MONGO_DATABASE:-tasks}"
-    # Mongo API mode currently does not expose SQL auth/session endpoints; run UI in guest mode.
-    export VITE_AUTH_REQUIRED="false"
+    unset VITE_AUTH_REQUIRED
   else
     export DB_DRIVER=sqlite3
     unset DB_DSN

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -44,6 +46,9 @@ type contextKey string
 const currentUserContextKey contextKey = "current_user"
 
 func (s *Server) ensureAuthSchema(ctx context.Context) error {
+	if s.mongoAuth != nil {
+		return s.mongoAuth.ensure(ctx)
+	}
 	if s.db == nil {
 		return errors.New("auth schema requires SQL backend")
 	}
@@ -267,6 +272,23 @@ func sessionDuration() time.Duration {
 }
 
 func (s *Server) currentUserFromRequest(r *http.Request) (*authUser, error) {
+	if s.mongoAuth != nil {
+		cookie, err := r.Cookie(sessionCookieName)
+		if err != nil {
+			if errors.Is(err, http.ErrNoCookie) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		u, err := s.mongoCurrentUserFromToken(r.Context(), cookie.Value)
+		if err != nil {
+			if errors.Is(err, mongo.ErrNoDocuments) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		return u, nil
+	}
 	if s.db == nil {
 		return nil, nil
 	}
@@ -312,7 +334,27 @@ func (s *Server) auditActorFromOwner(ctx context.Context, user *authUser, ownerH
 		return user
 	}
 	ownerHint = strings.TrimSpace(ownerHint)
-	if ownerHint == "" || s.db == nil {
+	if ownerHint == "" {
+		return nil
+	}
+	if s.mongoAuth != nil {
+		var out struct {
+			ID        string    `bson:"id"`
+			Email     string    `bson:"email"`
+			Username  string    `bson:"username"`
+			FirstName string    `bson:"firstName"`
+			LastName  string    `bson:"lastName"`
+			Role      string    `bson:"role"`
+			CreatedAt time.Time `bson:"createdAt"`
+			UpdatedAt time.Time `bson:"updatedAt"`
+		}
+		err := s.mongoAuth.users.FindOne(ctx, bson.D{{Key: "username", Value: ownerHint}}).Decode(&out)
+		if err != nil {
+			return nil
+		}
+		return &authUser{ID: out.ID, Email: out.Email, Username: out.Username, FirstName: out.FirstName, LastName: out.LastName, Role: parseUserRole(out.Role), CreatedAt: out.CreatedAt, UpdatedAt: out.UpdatedAt}
+	}
+	if s.db == nil {
 		return nil
 	}
 	row := s.queryRowDB(ctx, `
@@ -335,6 +377,23 @@ FROM users WHERE username = ?`, ownerHint)
 }
 
 func (s *Server) issueSessionCookie(ctx context.Context, w http.ResponseWriter, userID string) error {
+	if s.mongoAuth != nil {
+		rawToken, err := s.mongoCreateSession(ctx, userID)
+		if err != nil {
+			return err
+		}
+		expiry := time.Now().UTC().Add(sessionDuration())
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    rawToken,
+			Path:     "/",
+			Expires:  expiry,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production"),
+		})
+		return nil
+	}
 	if s.db == nil {
 		return errors.New("session store unavailable")
 	}

@@ -31,6 +31,7 @@ import (
 	"github.com/j-m-harrison/dts-submission/internal/task"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // maxJSONRequestBytes caps JSON bodies for task mutations to limit allocation and parse cost.
@@ -59,6 +60,7 @@ type Server struct {
 	store storage.Store
 	db    *sql.DB
 	dbDriver string
+	mongoAuth *mongoAuthStore
 	// dbPing is an optional callback used by the readiness endpoint. For
 	// SQL-backed stores this wraps (*sql.DB).PingContext; for Mongo-backed
 	// stores it can wrap a mongo.Client.Ping call.
@@ -180,6 +182,8 @@ func NewServerWithStore(store storage.Store, ping func(ctx context.Context) erro
 	return &Server{
 		store: store,
 		db:    nil,
+		dbDriver: "",
+		mongoAuth: nil,
 		dbPing: func(ctx context.Context) error {
 			if ping == nil {
 				return nil
@@ -189,9 +193,40 @@ func NewServerWithStore(store storage.Store, ping func(ctx context.Context) erro
 	}
 }
 
+// NewServerWithStoreAndAuthDB enables non-SQL task stores (e.g. Mongo) to share
+// the same SQL-backed authentication/session/admin/audit path used by SQL modes.
+func NewServerWithStoreAndAuthDB(store storage.Store, ping func(ctx context.Context) error, authDB *sql.DB, authDriver string) *Server {
+	s := NewServerWithStore(store, ping)
+	s.db = authDB
+	s.dbDriver = strings.ToLower(strings.TrimSpace(authDriver))
+	return s
+}
+
+func NewServerWithStoreAndMongoAuth(store storage.Store, ping func(ctx context.Context) error, mongoClient any, mongoDBName string) *Server {
+	s := NewServerWithStore(store, ping)
+	client, ok := mongoClient.(*mongo.Client)
+	if !ok || client == nil {
+		return s
+	}
+	s.mongoAuth = newMongoAuthStore(client, mongoDBName)
+	s.dbDriver = "mongo"
+	return s
+}
+
 // BootstrapSQLAuthArtifacts creates auth-related SQL tables (users, sessions, audit_logs, …) when
 // using an SQL-backed store. Task mutations write audit rows; this must run before the first mutation.
 func (s *Server) BootstrapSQLAuthArtifacts(ctx context.Context) error {
+	if s.mongoAuth != nil {
+		if err := s.mongoAuth.ensure(ctx); err != nil {
+			return err
+		}
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development") {
+			if err := s.mongoSeedDefaultUsers(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if s.db == nil {
 		return nil
 	}
@@ -768,7 +803,7 @@ func changedUserProfileFields(before, after authUser) []string {
 }
 
 func (s *Server) logAudit(ctx context.Context, user *authUser, action, entityType, entityID string, before any, after any, changedFields []string) {
-	if s.db == nil {
+	if s.db == nil && s.mongoAuth == nil {
 		return
 	}
 	actor := user
@@ -802,6 +837,10 @@ func (s *Server) logAudit(ctx context.Context, user *authUser, action, entityTyp
 	changedRaw := "[]"
 	if b, err := json.Marshal(changedFields); err == nil {
 		changedRaw = string(b)
+	}
+	if s.mongoAuth != nil {
+		s.mongoInsertAudit(ctx, actor, action, entityType, entityID, changedFields, beforeJSON, afterJSON, rawJSON)
+		return
 	}
 	if _, err := s.execDB(
 		ctx,
@@ -865,6 +904,15 @@ func (s *Server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 			limit = v
 		}
 	}
+	if s.mongoAuth != nil {
+		out, err := s.mongoListAuditLogs(r.Context(), userID, query, fieldFilter, sortBy, order, limit)
+		if err != nil {
+			writeErrorCode(w, http.StatusInternalServerError, "failed to list audit logs", "internal_error")
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	where := " WHERE 1=1 "
 	args := make([]any, 0, 8)
 	if userID != "" {
@@ -910,6 +958,15 @@ func (s *Server) handleUserDisplayNames(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.ensureAuthSchema(r.Context()); err != nil {
 		writeErrorCode(w, http.StatusServiceUnavailable, "authentication is unavailable", "auth_unavailable")
+		return
+	}
+	if s.mongoAuth != nil {
+		names, err := s.mongoListDisplayNames(r.Context())
+		if err != nil {
+			writeErrorCode(w, http.StatusInternalServerError, "failed to list display names", "internal_error")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string][]string{"displayNames": names})
 		return
 	}
 	rows, err := s.queryDB(r.Context(), `SELECT username FROM users ORDER BY LOWER(username)`)
@@ -990,10 +1047,18 @@ func (s *Server) handleAuthRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	id := uuid.New().String()
-	_, err = s.execDB(r.Context(), `INSERT INTO users (id, email, username, first_name, last_name, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'viewer', ?, ?)`, id, email, username, firstName, lastName, hash, now, now)
-	if err != nil {
-		writeErrorCode(w, http.StatusConflict, "user already exists", "user_exists")
-		return
+	if s.mongoAuth != nil {
+		err = s.mongoCreateUser(r.Context(), authUser{ID: id, Email: email, Username: username, FirstName: firstName, LastName: lastName, Role: roleViewer, CreatedAt: now, UpdatedAt: now}, hash)
+		if err != nil {
+			writeErrorCode(w, http.StatusConflict, "user already exists", "user_exists")
+			return
+		}
+	} else {
+		_, err = s.execDB(r.Context(), `INSERT INTO users (id, email, username, first_name, last_name, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'viewer', ?, ?)`, id, email, username, firstName, lastName, hash, now, now)
+		if err != nil {
+			writeErrorCode(w, http.StatusConflict, "user already exists", "user_exists")
+			return
+		}
 	}
 	created := authUser{ID: id, Email: email, Username: username, FirstName: firstName, LastName: lastName, Role: roleViewer, CreatedAt: now, UpdatedAt: now}
 	s.logAudit(r.Context(), &created, "register", "user", id, nil, auditUserPublicSnapshot(created), []string{"email", "username", "firstName", "lastName", "role"})
@@ -1029,11 +1094,23 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	var u authUser
 	var hash, role string
-	row := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at, password_hash FROM users WHERE email = ?`, email)
-	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.FirstName, &u.LastName, &role, &u.CreatedAt, &u.UpdatedAt, &hash); err != nil {
-		s.logAudit(r.Context(), nil, "login_failed", "auth", email, nil, map[string]string{"reason": "unknown_user"}, nil)
-		writeErrorCode(w, http.StatusUnauthorized, "invalid credentials", "invalid_credentials")
-		return
+	if s.mongoAuth != nil {
+		um, hm, err := s.mongoGetUserByEmail(r.Context(), email)
+		if err != nil {
+			s.logAudit(r.Context(), nil, "login_failed", "auth", email, nil, map[string]string{"reason": "unknown_user"}, nil)
+			writeErrorCode(w, http.StatusUnauthorized, "invalid credentials", "invalid_credentials")
+			return
+		}
+		u = *um
+		role = string(u.Role)
+		hash = hm
+	} else {
+		row := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at, password_hash FROM users WHERE email = ?`, email)
+		if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.FirstName, &u.LastName, &role, &u.CreatedAt, &u.UpdatedAt, &hash); err != nil {
+			s.logAudit(r.Context(), nil, "login_failed", "auth", email, nil, map[string]string{"reason": "unknown_user"}, nil)
+			writeErrorCode(w, http.StatusUnauthorized, "invalid credentials", "invalid_credentials")
+			return
+		}
 	}
 	if !verifyPassword(password, hash) && !verifySeedPasswordAlias(email, password, hash) {
 		s.logAudit(r.Context(), nil, "login_failed", "auth", email, nil, map[string]string{"reason": "bad_password"}, nil)
@@ -1058,8 +1135,12 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		s.logAudit(r.Context(), u, "logout", "user", u.ID, nil, nil, []string{"session"})
 	}
 	cookie, err := r.Cookie(sessionCookieName)
-	if err == nil && s.db != nil {
-		_, _ = s.execDB(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, hashToken(cookie.Value))
+	if err == nil {
+		if s.mongoAuth != nil {
+			s.mongoDeleteSessionByToken(r.Context(), cookie.Value)
+		} else if s.db != nil {
+			_, _ = s.execDB(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, hashToken(cookie.Value))
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	w.WriteHeader(http.StatusNoContent)
@@ -1101,16 +1182,37 @@ func (s *Server) handleAuthRecover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var userID string
-	if err := s.queryRowDB(r.Context(), `SELECT id FROM users WHERE email = ?`, email).Scan(&userID); err == nil && strings.TrimSpace(userID) != "" {
+	if s.mongoAuth != nil {
+		if u2, _, err := s.mongoGetUserByEmail(r.Context(), email); err == nil && strings.TrimSpace(u2.ID) != "" {
+			userID = u2.ID
+		}
+	} else if err := s.queryRowDB(r.Context(), `SELECT id FROM users WHERE email = ?`, email).Scan(&userID); err == nil && strings.TrimSpace(userID) != "" {
+	}
+	if strings.TrimSpace(userID) != "" {
 		rawToken, tokenErr := makeSessionToken()
 		if tokenErr == nil {
-			now := time.Now().UTC()
-			expiresAt := now.Add(30 * time.Minute)
-			_, insErr := s.execDB(r.Context(), `INSERT INTO password_resets (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)`,
-				uuid.New().String(), userID, hashToken(rawToken), expiresAt, now)
+			var insErr error
+			if s.mongoAuth != nil {
+				var t string
+				t, insErr = s.mongoCreatePasswordReset(r.Context(), userID)
+				if insErr == nil {
+					rawToken = t
+				}
+			} else {
+				now := time.Now().UTC()
+				expiresAt := now.Add(30 * time.Minute)
+				_, insErr = s.execDB(r.Context(), `INSERT INTO password_resets (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)`,
+					uuid.New().String(), userID, hashToken(rawToken), expiresAt, now)
+			}
 			if insErr == nil {
 				var uname string
-				_ = s.queryRowDB(r.Context(), `SELECT username FROM users WHERE id = ?`, userID).Scan(&uname)
+				if s.mongoAuth != nil {
+					if uu, err := s.mongoGetUserByID(r.Context(), userID); err == nil {
+						uname = uu.Username
+					}
+				} else {
+					_ = s.queryRowDB(r.Context(), `SELECT username FROM users WHERE id = ?`, userID).Scan(&uname)
+				}
 				s.logAudit(r.Context(), &authUser{ID: userID, Username: strings.TrimSpace(uname)}, "password_reset_request", "user", userID, nil, nil, nil)
 			}
 			if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development") {
@@ -1166,27 +1268,49 @@ func (s *Server) handleAuthResetPassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var resetID, userID string
-	row := s.queryRowDB(r.Context(), `SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?`, hashToken(token), time.Now().UTC())
-	if err := row.Scan(&resetID, &userID); err != nil {
-		writeErrorCode(w, http.StatusBadRequest, "invalid or expired reset token", "invalid_reset_token")
-		return
+	var err error
+	if s.mongoAuth != nil {
+		var hashNew string
+		hashNew, err = hashPassword(newPassword)
+		if err != nil {
+			writeErrorCode(w, http.StatusInternalServerError, "failed to reset password", "internal_error")
+			return
+		}
+		userID, err = s.mongoConsumePasswordReset(r.Context(), token, hashNew)
+		if err != nil {
+			writeErrorCode(w, http.StatusBadRequest, "invalid or expired reset token", "invalid_reset_token")
+			return
+		}
+	} else {
+		row := s.queryRowDB(r.Context(), `SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?`, hashToken(token), time.Now().UTC())
+		if err := row.Scan(&resetID, &userID); err != nil {
+			writeErrorCode(w, http.StatusBadRequest, "invalid or expired reset token", "invalid_reset_token")
+			return
+		}
 	}
-	hash, err := hashPassword(newPassword)
-	if err != nil {
-		writeErrorCode(w, http.StatusInternalServerError, "failed to reset password", "internal_error")
-		return
+	if s.mongoAuth == nil {
+		hash, err := hashPassword(newPassword)
+		if err != nil {
+			writeErrorCode(w, http.StatusInternalServerError, "failed to reset password", "internal_error")
+			return
+		}
+		now := time.Now().UTC()
+		_, err = s.execDB(r.Context(), `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, hash, now, userID)
+		if err != nil {
+			writeErrorCode(w, http.StatusInternalServerError, "failed to reset password", "internal_error")
+			return
+		}
+		_, _ = s.execDB(r.Context(), `UPDATE password_resets SET used_at = ? WHERE id = ?`, now, resetID)
+		_, _ = s.execDB(r.Context(), `DELETE FROM sessions WHERE user_id = ?`, userID)
 	}
-	now := time.Now().UTC()
-	_, err = s.execDB(r.Context(), `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, hash, now, userID)
-	if err != nil {
-		writeErrorCode(w, http.StatusInternalServerError, "failed to reset password", "internal_error")
-		return
-	}
-	_, _ = s.execDB(r.Context(), `UPDATE password_resets SET used_at = ? WHERE id = ?`, now, resetID)
-	_, _ = s.execDB(r.Context(), `DELETE FROM sessions WHERE user_id = ?`, userID)
 	var ua authUser
 	var rrole string
-	if err := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`, userID).Scan(&ua.ID, &ua.Email, &ua.Username, &ua.FirstName, &ua.LastName, &rrole, &ua.CreatedAt, &ua.UpdatedAt); err == nil {
+	if s.mongoAuth != nil {
+		if uu, err := s.mongoGetUserByID(r.Context(), userID); err == nil {
+			ua = *uu
+			s.logAudit(r.Context(), &ua, "password_reset_complete", "user", userID, nil, nil, []string{"password"})
+		}
+	} else if err := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`, userID).Scan(&ua.ID, &ua.Email, &ua.Username, &ua.FirstName, &ua.LastName, &rrole, &ua.CreatedAt, &ua.UpdatedAt); err == nil {
 		ua.Role = parseUserRole(rrole)
 		s.logAudit(r.Context(), &ua, "password_reset_complete", "user", userID, nil, nil, []string{"password"})
 	}
@@ -1195,6 +1319,34 @@ func (s *Server) handleAuthResetPassword(w http.ResponseWriter, r *http.Request)
 
 // handleAdminUserPasswordReset issues a password reset token for another user (admin-only route).
 func (s *Server) handleAdminUserPasswordReset(w http.ResponseWriter, r *http.Request, targetUserID string) {
+	if s.mongoAuth != nil {
+		if _, err := s.mongoGetUserByID(r.Context(), targetUserID); err != nil {
+			writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+			return
+		}
+		rawToken, tokenErr := s.mongoCreatePasswordReset(r.Context(), targetUserID)
+		if tokenErr != nil {
+			writeErrorCode(w, http.StatusInternalServerError, "failed to create reset token", "internal_error")
+			return
+		}
+		if admin := currentUserFromContext(r.Context()); admin != nil {
+			s.logAudit(r.Context(), admin, "admin_password_reset_request", "user", targetUserID, nil, nil, nil)
+		}
+		msg := "A password reset link has been sent. The user should check their email inbox and follow the link to choose a new password."
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development") {
+			resetURL := oauthFrontendRedirectURL("password_reset_link_sent")
+			if u, perr := url.Parse(resetURL); perr == nil {
+				q := u.Query()
+				q.Set("resetToken", rawToken)
+				u.RawQuery = q.Encode()
+				resetURL = u.String()
+			}
+			writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "message": msg + " (Development: reset URL included for testing.)", "resetUrl": resetURL, "token": rawToken})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "message": msg})
+		return
+	}
 	var exists int
 	err := s.queryRowDB(r.Context(), `SELECT 1 FROM users WHERE id = ?`, targetUserID).Scan(&exists)
 	if err != nil {
@@ -1296,6 +1448,15 @@ func (s *Server) handleUsersCollection(w http.ResponseWriter, r *http.Request) {
 				writeErrorCode(w, http.StatusBadRequest, "offset must be a non-negative integer", "invalid_pagination")
 				return
 			}
+		}
+		if s.mongoAuth != nil {
+			users, total, err := s.mongoListUsers(r.Context(), q, roleFilter, sortCol, order, limit, offset)
+			if err != nil {
+				writeErrorCode(w, http.StatusInternalServerError, "failed to list users", "internal_error")
+				return
+			}
+			writeJSON(w, http.StatusOK, listUsersResponse{Users: users, Total: total})
+			return
 		}
 		where := " WHERE 1=1 "
 		args := make([]any, 0, 8)
@@ -1399,26 +1560,47 @@ func (s *Server) handleUsersItem(w http.ResponseWriter, r *http.Request) {
 		role := parseUserRole(req.Role)
 		var before authUser
 		var bRole string
-		if err := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`, id).Scan(
-			&before.ID, &before.Email, &before.Username, &before.FirstName, &before.LastName, &bRole, &before.CreatedAt, &before.UpdatedAt); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+		if s.mongoAuth != nil {
+			ub, err := s.mongoGetUserByID(r.Context(), id)
+			if err != nil {
 				writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
 				return
 			}
-			writeErrorCode(w, http.StatusInternalServerError, "failed to look up user", "internal_error")
-			return
+			before = *ub
+		} else {
+			if err := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`, id).Scan(
+				&before.ID, &before.Email, &before.Username, &before.FirstName, &before.LastName, &bRole, &before.CreatedAt, &before.UpdatedAt); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+					return
+				}
+				writeErrorCode(w, http.StatusInternalServerError, "failed to look up user", "internal_error")
+				return
+			}
+			before.Role = parseUserRole(bRole)
 		}
-		before.Role = parseUserRole(bRole)
 		now := time.Now().UTC()
-		res, err := s.execDB(r.Context(), `UPDATE users SET email = ?, username = ?, first_name = ?, last_name = ?, role = ?, updated_at = ? WHERE id = ?`,
-			email, username, firstName, lastName, string(role), now, id)
-		if err != nil {
-			writeErrorCode(w, http.StatusInternalServerError, "failed to update user", "internal_error")
-			return
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
-			return
+		if s.mongoAuth != nil {
+			n, err := s.mongoUpdateUserByID(r.Context(), id, email, username, firstName, lastName, role, now)
+			if err != nil {
+				writeErrorCode(w, http.StatusInternalServerError, "failed to update user", "internal_error")
+				return
+			}
+			if n == 0 {
+				writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+				return
+			}
+		} else {
+			res, err := s.execDB(r.Context(), `UPDATE users SET email = ?, username = ?, first_name = ?, last_name = ?, role = ?, updated_at = ? WHERE id = ?`,
+				email, username, firstName, lastName, string(role), now, id)
+			if err != nil {
+				writeErrorCode(w, http.StatusInternalServerError, "failed to update user", "internal_error")
+				return
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+				return
+			}
 		}
 		after := authUser{ID: id, Email: email, Username: username, FirstName: firstName, LastName: lastName, Role: role, CreatedAt: before.CreatedAt, UpdatedAt: now}
 		if admin := currentUserFromContext(r.Context()); admin != nil {
@@ -1428,31 +1610,51 @@ func (s *Server) handleUsersItem(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		var beforeDel authUser
 		var dRole string
-		if err := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`, id).Scan(
-			&beforeDel.ID, &beforeDel.Email, &beforeDel.Username, &beforeDel.FirstName, &beforeDel.LastName, &dRole, &beforeDel.CreatedAt, &beforeDel.UpdatedAt); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+		if s.mongoAuth != nil {
+			ub, err := s.mongoGetUserByID(r.Context(), id)
+			if err != nil {
 				writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
 				return
 			}
-			writeErrorCode(w, http.StatusInternalServerError, "failed to look up user", "internal_error")
-			return
-		}
-		beforeDel.Role = parseUserRole(dRole)
-		var admins int
-		if err := s.queryRowDB(r.Context(), `SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&admins); err == nil && admins <= 1 {
-			if beforeDel.Role == roleAdmin {
+			beforeDel = *ub
+			if admins, err := s.mongoCountAdmins(r.Context()); err == nil && admins <= 1 && beforeDel.Role == roleAdmin {
 				writeErrorCode(w, http.StatusConflict, "cannot delete the last admin", "last_admin_delete_forbidden")
 				return
 			}
-		}
-		res, err := s.execDB(r.Context(), `DELETE FROM users WHERE id = ?`, id)
-		if err != nil {
-			writeErrorCode(w, http.StatusInternalServerError, "failed to delete user", "internal_error")
-			return
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
-			return
+			if n, err := s.mongoDeleteUserByID(r.Context(), id); err != nil {
+				writeErrorCode(w, http.StatusInternalServerError, "failed to delete user", "internal_error")
+				return
+			} else if n == 0 {
+				writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+				return
+			}
+		} else {
+			if err := s.queryRowDB(r.Context(), `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`, id).Scan(
+				&beforeDel.ID, &beforeDel.Email, &beforeDel.Username, &beforeDel.FirstName, &beforeDel.LastName, &dRole, &beforeDel.CreatedAt, &beforeDel.UpdatedAt); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+					return
+				}
+				writeErrorCode(w, http.StatusInternalServerError, "failed to look up user", "internal_error")
+				return
+			}
+			beforeDel.Role = parseUserRole(dRole)
+			var admins int
+			if err := s.queryRowDB(r.Context(), `SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&admins); err == nil && admins <= 1 {
+				if beforeDel.Role == roleAdmin {
+					writeErrorCode(w, http.StatusConflict, "cannot delete the last admin", "last_admin_delete_forbidden")
+					return
+				}
+			}
+			res, err := s.execDB(r.Context(), `DELETE FROM users WHERE id = ?`, id)
+			if err != nil {
+				writeErrorCode(w, http.StatusInternalServerError, "failed to delete user", "internal_error")
+				return
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				writeErrorCode(w, http.StatusNotFound, "user not found", "user_not_found")
+				return
+			}
 		}
 		if admin := currentUserFromContext(r.Context()); admin != nil {
 			s.logAudit(r.Context(), admin, "delete", "user", id, beforeDel, nil, nil)

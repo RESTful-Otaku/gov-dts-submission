@@ -28,7 +28,7 @@
   export let searchInput: HTMLInputElement | null
 
   export let onCreateClick: () => void
-  export let onSetMainTab: (tab: 'tasks' | 'users' | 'audit') => void = () => {}
+  export let onSetMainTab: (tab: 'users' | 'audit') => void = () => {}
   export let onToggleFilters: () => void
   export let onSetViewMode: (next: ViewMode) => void
   export let onSearchTermChange: (next: string) => void
@@ -153,7 +153,7 @@
             <span class="btn-icon-compact__label">{UI_COPY.tasks.createTask}</span>
           </button>
         {/if}
-        <ViewModeToggle {viewMode} {onSetViewMode} />
+        <ViewModeToggle {viewMode} tasksActive={activeMainTab === 'tasks'} {onSetViewMode} />
         {#if isAdmin && adminTabsAvailable}
           <span class="task-controls-toolbar-divider" aria-hidden="true"></span>
           <AdminMainTabToggle {activeMainTab} {onSetMainTab} />

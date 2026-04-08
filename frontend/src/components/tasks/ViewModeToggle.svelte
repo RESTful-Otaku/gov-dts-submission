@@ -7,6 +7,7 @@
   import { UI_COPY } from '../../lib/app/copy'
 
   export let viewMode: ViewMode
+  export let tasksActive = true
   export let onSetViewMode: (next: ViewMode) => void
 </script>
 
@@ -14,7 +15,7 @@
   <button
     type="button"
     class="btn-icon-compact"
-    class:selected={viewMode === 'cards'}
+    class:selected={tasksActive && viewMode === 'cards'}
     on:click={() => onSetViewMode('cards')}
     title={UI_COPY.tasks.views.summaryView}
     aria-label={UI_COPY.tasks.views.summary}
@@ -25,7 +26,7 @@
   <button
     type="button"
     class="btn-icon-compact"
-    class:selected={viewMode === 'list'}
+    class:selected={tasksActive && viewMode === 'list'}
     on:click={() => onSetViewMode('list')}
     title={UI_COPY.tasks.views.listView}
     aria-label={UI_COPY.tasks.views.list}
@@ -36,7 +37,7 @@
   <button
     type="button"
     class="btn-icon-compact"
-    class:selected={viewMode === 'kanban'}
+    class:selected={tasksActive && viewMode === 'kanban'}
     on:click={() => onSetViewMode('kanban')}
     title={UI_COPY.tasks.views.kanbanView}
     aria-label={UI_COPY.tasks.views.kanban}

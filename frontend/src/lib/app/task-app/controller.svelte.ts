@@ -405,6 +405,7 @@ export class TaskAppController {
 
   private tourAdvanceGeneration = 0
   private readonly deleteUndoWindowMs = 4500
+  private readonly userDeleteUndoWindowMs = 10000
   private readonly serverTaskQueryEnabled = import.meta.env.VITE_SERVER_TASK_QUERY === 'true'
   private readonly authRequired = import.meta.env.MODE === 'test' ? false : import.meta.env.VITE_AUTH_REQUIRED !== 'false'
   private listQueryRequestSeq = 0
@@ -1444,6 +1445,7 @@ export class TaskAppController {
   }
 
   setViewModeFromUi(next: ViewMode): void {
+    this.activeMainTab = 'tasks'
     this.viewMode = next
     if (!this.isNarrow) this.markOnboardingStep('view_modes')
   }
@@ -2280,21 +2282,57 @@ export class TaskAppController {
   async performDeleteUsers(): Promise<void> {
     if (!this.deleteUserModalIds?.length) return
     const ids = [...this.deleteUserModalIds]
+    const removedSet = new Set(ids)
+    const snapshots = new Map(
+      this.users
+        .filter((u) => removedSet.has(u.id))
+        .map((u) => [u.id, u] as const),
+    )
     this.closeDeleteUsersModal()
     this.selectedUserIds = new Set()
-    let ok = 0
-    for (const id of ids) {
-      try {
-        await deleteUser(id)
-        ok++
-      } catch (e) {
-        this.showToast(apiErrorMessage(e, 'Failed to delete user'), 'error')
+    this.users = this.users.filter((u) => !removedSet.has(u.id))
+    this.usersTotal = Math.max(0, this.usersTotal - ids.length)
+
+    let cancelled = false
+    let undoToastId = 0
+    const commitTimer = setTimeout(async () => {
+      if (cancelled) return
+      let ok = 0
+      for (const id of ids) {
+        try {
+          await deleteUser(id)
+          ok++
+        } catch (e) {
+          this.showToast(apiErrorMessage(e, 'Failed to delete user'), 'error')
+        }
       }
-    }
-    if (ok > 0) {
-      this.showToast(ok === 1 ? 'User deleted.' : `${ok} users deleted.`, 'notification')
+      if (ok > 0) {
+        this.showToast(ok === 1 ? 'User deleted.' : `${ok} users deleted.`, 'notification')
+      }
+      this.dismissToast(undoToastId)
       await this.loadUsers()
-    }
+    }, this.userDeleteUndoWindowMs)
+
+    undoToastId = this.showToast('User deletion pending. Undo?', 'warning', {
+      actionLabel: UI_MESSAGES.undo,
+      durationMs: this.userDeleteUndoWindowMs,
+      countdownFromSeconds: Math.ceil(this.userDeleteUndoWindowMs / 1000),
+      onAction: () => {
+        if (cancelled) return
+        cancelled = true
+        clearTimeout(commitTimer)
+        const existing = new Set(this.users.map((u) => u.id))
+        const restore = ids
+          .map((id) => snapshots.get(id))
+          .filter((u): u is AuthUser => Boolean(u))
+          .filter((u) => !existing.has(u.id))
+        if (restore.length > 0) {
+          this.users = [...restore, ...this.users]
+          this.usersTotal += restore.length
+        }
+        this.dismissToast(undoToastId)
+      },
+    })
   }
 
   async loadAuditLogs(): Promise<void> {
