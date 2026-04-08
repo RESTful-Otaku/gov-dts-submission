@@ -67,15 +67,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 	created_at TIMESTAMP NOT NULL,
 	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-CREATE TABLE IF NOT EXISTS password_resets (
-	id TEXT PRIMARY KEY,
-	user_id TEXT NOT NULL,
-	token_hash TEXT NOT NULL UNIQUE,
-	expires_at TIMESTAMP NOT NULL,
-	created_at TIMESTAMP NOT NULL,
-	used_at TIMESTAMP NULL,
-	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
 CREATE TABLE IF NOT EXISTS audit_logs (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
@@ -89,6 +80,40 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 	raw_json TEXT NOT NULL,
 	created_at TIMESTAMP NOT NULL
 );`)
+	if err != nil {
+		return err
+	}
+	userIDType := "TEXT"
+	if row := s.db.QueryRowContext(ctx, `
+SELECT data_type
+FROM information_schema.columns
+WHERE table_name = 'users' AND column_name = 'id'
+LIMIT 1
+`); row != nil {
+		var dt string
+		if scanErr := row.Scan(&dt); scanErr == nil {
+			switch strings.ToLower(strings.TrimSpace(dt)) {
+			case "uuid":
+				userIDType = "UUID"
+			case "character varying", "varchar", "text":
+				userIDType = "TEXT"
+			case "character", "char":
+				// MariaDB users.id is CHAR(36)
+				userIDType = "CHAR(36)"
+			}
+		}
+	}
+	_, err = s.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS password_resets (
+	id %s PRIMARY KEY,
+	user_id %s NOT NULL,
+	token_hash TEXT NOT NULL UNIQUE,
+	expires_at TIMESTAMP NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	used_at TIMESTAMP NULL,
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+`, userIDType, userIDType))
 	if err != nil {
 		return err
 	}

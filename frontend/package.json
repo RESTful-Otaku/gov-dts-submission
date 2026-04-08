@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "check:api-types": "node -e \"import('node:fs').then(fs=>{const p='src/lib/generated/openapi-types.ts'; if(!fs.existsSync(p)){console.error('Missing '+p); process.exit(1)};})\"",
     "check": "node ./node_modules/typescript/bin/tsc -p tsconfig.app.json && node ./node_modules/typescript/bin/tsc -p tsconfig.node.json",
     "check:svelte": "svelte-check --tsconfig ./tsconfig.app.json",
     "test": "node ./node_modules/vitest/vitest.mjs run",
