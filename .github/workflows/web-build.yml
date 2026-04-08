@@ -5,6 +5,8 @@ on:
   push:
     branches: [main, master]
     paths:
+      - "VERSION"
+      - "scripts/bump-version.mjs"
       - ".github/workflows/web-build.yml"
       - "frontend/src/**"
       - "frontend/tests/**"
@@ -22,6 +24,8 @@ on:
   pull_request:
     branches: [main, master]
     paths:
+      - "VERSION"
+      - "scripts/bump-version.mjs"
       - ".github/workflows/web-build.yml"
       - "frontend/src/**"
       - "frontend/tests/**"
@@ -79,14 +83,29 @@ jobs:
             echo "VERSION mismatch: VERSION=$VERSION_FILE backend/openapi.yaml=$OPENAPI_VERSION"
             exit 1
           fi
+          GRADLE_VER="$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' frontend/android/app/build.gradle | head -1)"
+          IOS_VER="$(grep -m1 'MARKETING_VERSION = ' frontend/ios/App/App.xcodeproj/project.pbxproj | sed -n 's/.*MARKETING_VERSION = \([^;]*\);/\1/p' | tr -d ' ')"
+          if [[ "$VERSION_FILE" != "$GRADLE_VER" ]]; then
+            echo "VERSION mismatch: VERSION=$VERSION_FILE android versionName=$GRADLE_VER"
+            exit 1
+          fi
+          if [[ "$VERSION_FILE" != "$IOS_VER" ]]; then
+            echo "VERSION mismatch: VERSION=$VERSION_FILE iOS MARKETING_VERSION=$IOS_VER"
+            exit 1
+          fi
 
       - name: Install, test, and build
         working-directory: frontend
+        env:
+          # E2E preview uses same-origin /api via Vite preview proxy; guest UI matches Playwright smoke tests.
+          VITE_AUTH_REQUIRED: "false"
+          VITE_API_BASE: ""
         run: |
           bun install --frozen-lockfile
+          bun run check:api-types
           bun run check
           bun run check:svelte
-          bun run test
+          bun run test:coverage
           bun run build
 
       - name: Install Playwright Chromium

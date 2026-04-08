@@ -254,6 +254,8 @@ command_matches_safe_kill() {
   [[ -n "$root" && "$cmd" == *"$root/frontend"* ]] && return 0
   [[ "$cmd" == *" go run ./cmd/api"* ]] && return 0
   [[ "$cmd" == *" go run ./cmd/api-mongo"* ]] && return 0
+  # `go run` compiles to a temp binary like /tmp/go-build…/b001/exe/api
+  [[ "$cmd" == *"go-build"*"/exe/api"* ]] && return 0
   [[ "$cmd" == *"bun run dev"* ]] && return 0
   [[ "$cmd" == *"vite preview"* ]] && return 0
   [[ "$cmd" == *"vite.js"* ]] && return 0
@@ -493,5 +495,15 @@ gov_dts_mongo_port_ready() {
     mongosh --quiet "mongodb://127.0.0.1:27017" --eval "db.adminCommand('ping')" >/dev/null 2>&1 && return 0
   fi
   return 1
+}
+
+# --- Vite + native mobile SQLite (SQLCipher) ---
+# VITE_MOBILE_LOCAL_DB=true requires VITE_MOBILE_DB_SECRET at build time (inlined by Vite).
+# Default is for local/CI only — set VITE_MOBILE_DB_SECRET or GitHub secret for production/store builds.
+GOV_DTS_MOBILE_DB_SECRET_DEFAULT="${GOV_DTS_MOBILE_DB_SECRET_DEFAULT:-gov-dts-mobile-sqlcipher-local-dev-not-for-store}"
+
+gov_dts_export_vite_mobile_local_db_env() {
+  export VITE_MOBILE_LOCAL_DB=true
+  export VITE_MOBILE_DB_SECRET="${VITE_MOBILE_DB_SECRET:-$GOV_DTS_MOBILE_DB_SECRET_DEFAULT}"
 }
 

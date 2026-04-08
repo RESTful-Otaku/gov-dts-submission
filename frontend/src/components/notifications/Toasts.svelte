@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   import type { Toast } from '../../lib/app/types'
 
   export let toasts: Toast[] = []
@@ -12,7 +13,7 @@
 <div
   class="toast-container"
   role="region"
-  aria-label="Notifications"
+  aria-label={UI_COPY.common.notifications}
 >
   {#each toasts as toast (toast.id)}
     <div
@@ -22,10 +23,22 @@
       data-toast-id={toast.id}
     >
       <span class="toast-message">{toast.message}</span>
+      {#if typeof toast.countdownSeconds === 'number'}
+        <span class="toast-countdown" aria-live="polite">{toast.countdownSeconds}</span>
+      {/if}
+      {#if toast.actionLabel && toast.onAction}
+        <button
+          type="button"
+          class="toast-action"
+          on:click={toast.onAction}
+        >
+          {toast.actionLabel}
+        </button>
+      {/if}
       <button
         type="button"
         class="toast-close"
-        aria-label="Dismiss"
+        aria-label={UI_COPY.common.dismiss}
         on:click={() => dismissToast(toast.id)}
       >
         ×

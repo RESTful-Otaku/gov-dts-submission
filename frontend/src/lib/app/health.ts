@@ -1,4 +1,4 @@
-import { ApiError, healthReady } from '../api'
+import { ApiError, apiErrorMessage, healthReady } from '../api'
 
 export type HealthBannerStatus = 'ok' | 'degraded' | 'down'
 
@@ -14,6 +14,6 @@ export async function refreshHealthState(): Promise<{
     return { healthStatus, healthMessage }
   } catch (e) {
     const err = e instanceof ApiError ? e : new ApiError({ status: 0, message: 'Service unavailable' })
-    return { healthStatus: 'down', healthMessage: err.message }
+    return { healthStatus: 'down', healthMessage: apiErrorMessage(err, 'Service unavailable') }
   }
 }

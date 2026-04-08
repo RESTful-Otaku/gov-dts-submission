@@ -32,14 +32,23 @@ describe('isNativeMobileSQLiteEnabled', () => {
     expect(isNativeMobileSQLiteEnabled()).toBe(false)
   })
 
-  it('is true on native when env is unset (default self-contained demo)', () => {
+  it('is true on native when env is unset and VITE_API_BASE is unset (offline demo default)', () => {
     vi.stubEnv('VITE_MOBILE_LOCAL_DB', '')
+    vi.stubEnv('VITE_API_BASE', '')
     mockGetPlatform.mockReturnValue('ios')
     expect(isNativeMobileSQLiteEnabled()).toBe(true)
   })
 
-  it('is true on native when the flag is explicitly true', () => {
+  it('is false on native when env is unset but VITE_API_BASE is set (API-backed native build)', () => {
+    vi.stubEnv('VITE_MOBILE_LOCAL_DB', '')
+    vi.stubEnv('VITE_API_BASE', 'http://10.0.2.2:8081')
+    mockGetPlatform.mockReturnValue('android')
+    expect(isNativeMobileSQLiteEnabled()).toBe(false)
+  })
+
+  it('is true on native when the flag is explicitly true (even if VITE_API_BASE is set)', () => {
     vi.stubEnv('VITE_MOBILE_LOCAL_DB', 'true')
+    vi.stubEnv('VITE_API_BASE', 'http://10.0.2.2:8081')
     mockGetPlatform.mockReturnValue('ios')
     expect(isNativeMobileSQLiteEnabled()).toBe(true)
   })

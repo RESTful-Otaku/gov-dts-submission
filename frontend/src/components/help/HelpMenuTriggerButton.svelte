@@ -1,6 +1,7 @@
 <script lang="ts">
   export let menuOpen = false
   export let onToggleMenu: () => void
+  export let initials = ''
   /** When true, sits in the task toolbar row (flow layout); when false, header positions it (e.g. fixed on narrow). */
   export let inToolbar = false
 </script>
@@ -13,11 +14,12 @@
   on:click|preventDefault|stopPropagation={onToggleMenu}
   aria-expanded={menuOpen}
   aria-haspopup="dialog"
-  aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-  title={menuOpen ? 'Close menu' : 'Open menu'}
+  aria-label={menuOpen ? 'Close profile menu' : 'Open profile menu'}
+  title={menuOpen ? 'Close profile menu' : 'Open profile menu'}
 >
-  <span class="btn-help-bars" aria-hidden="true">
-    <span class="btn-help-bar btn-help-bar--top"></span>
-    <span class="btn-help-bar btn-help-bar--bottom"></span>
-  </span>
+  {#if initials.trim()}
+    <span class="btn-help-avatar" aria-hidden="true">{initials.trim().slice(0, 2).toUpperCase()}</span>
+  {:else}
+    <span class="btn-help-avatar" aria-hidden="true">◯</span>
+  {/if}
 </button>

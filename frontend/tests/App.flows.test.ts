@@ -207,6 +207,58 @@ describe('App.svelte integration flows', () => {
       expect(queryByText('Todo task')).toBeNull()
       expect(getByText('Done task')).toBeVisible()
     })
+
+  })
+
+  it('removes active summary chip and restores filtered-out tasks', async () => {
+    const dueAtFuture1 = new Date(2026, 2, 28, 10, 0, 0, 0).toISOString()
+    const dueAtFuture2 = new Date(2026, 2, 29, 10, 0, 0, 0).toISOString()
+    const tasks = [
+      {
+        id: 't1',
+        title: 'Todo task',
+        description: null,
+        status: 'todo',
+        priority: 'high',
+        owner: 'Alice',
+        tags: ['evidence'],
+        dueAt: dueAtFuture1,
+        createdAt: dueAtFuture1,
+        updatedAt: dueAtFuture1,
+      },
+      {
+        id: 't2',
+        title: 'Done task',
+        description: null,
+        status: 'done',
+        priority: 'low',
+        owner: 'Bob',
+        tags: ['hearing'],
+        dueAt: dueAtFuture2,
+        createdAt: dueAtFuture2,
+        updatedAt: dueAtFuture2,
+      },
+    ]
+    const fetchMock = makeReadyFetchMock({
+      healthStatus: 'ready',
+      initialTasks: tasks,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    const { getByRole, getByText, queryByText, container } = render(App)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    await user.click(getByRole('button', { name: 'Toggle filters' }))
+    const statusSelect = container.querySelector('select[aria-label="Filter by status"]') as HTMLSelectElement
+    fireEvent.change(statusSelect, { target: { value: 'done' } })
+    await waitFor(() => {
+      expect(queryByText('Todo task')).toBeNull()
+      expect(getByText('Done task')).toBeVisible()
+    })
+    await user.click(getByRole('button', { name: 'Remove Status: Done' }))
+    await waitFor(() => {
+      expect(getByText('Todo task')).toBeVisible()
+      expect(getByText('Done task')).toBeVisible()
+    })
   })
 
   it('switches to kanban view via view toggle', async () => {
@@ -386,7 +438,55 @@ describe('App.svelte integration flows', () => {
     await user.click(getByRole('button', { name: 'Delete task' }))
 
     await waitFor(() => {
-      expect(getByText('Task deleted.')).toBeVisible()
+      expect(getByText('Tasks removed. Undo?')).toBeVisible()
+    })
+  })
+
+  it('applies focus-today workspace from metrics strip', async () => {
+    const now = new Date()
+    const dueToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 0, 0, 0).toISOString()
+    const dueTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 11, 0, 0, 0).toISOString()
+    const tasks = [
+      {
+        id: 't1',
+        title: 'Due today task',
+        description: null,
+        status: 'todo',
+        priority: 'normal',
+        owner: '',
+        tags: [],
+        dueAt: dueToday,
+        createdAt: dueToday,
+        updatedAt: dueToday,
+      },
+      {
+        id: 't2',
+        title: 'Due tomorrow task',
+        description: null,
+        status: 'todo',
+        priority: 'normal',
+        owner: '',
+        tags: [],
+        dueAt: dueTomorrow,
+        createdAt: dueTomorrow,
+        updatedAt: dueTomorrow,
+      },
+    ]
+    const fetchMock = makeReadyFetchMock({
+      healthStatus: 'ready',
+      initialTasks: tasks,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    const { getByRole, getByText, queryByText } = render(App)
+    await waitFor(() => {
+      expect(getByText('Due today task')).toBeVisible()
+      expect(getByText('Due tomorrow task')).toBeVisible()
+    })
+    await user.click(getByRole('button', { name: 'Filter tasks due today' }))
+    await waitFor(() => {
+      expect(getByText('Due today task')).toBeVisible()
+      expect(queryByText('Due tomorrow task')).toBeNull()
     })
   })
 })

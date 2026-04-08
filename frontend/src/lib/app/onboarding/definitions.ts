@@ -1,4 +1,16 @@
+import type { UserRole } from '../../api'
 import type { OnboardingStepId, TourStepDef } from './types'
+
+/** Checklist / tour steps that require creating, editing, or deleting tasks (hidden for viewers). */
+export const VIEWER_EXCLUDED_MUTATION_STEP_IDS = new Set<OnboardingStepId>([
+  'create_task',
+  'edit_task',
+  'delete_task',
+  'card_swipe',
+  'list_multiselect',
+  'list_bulk_delete',
+  'kanban_drag',
+])
 
 /**
  * Narrow view: expanded search covers the toolbar row. Collapse search for these steps so Create,
@@ -18,7 +30,7 @@ export const TOUR_STEPS_NEED_UNOBSTRUCTED_TOOLBAR: OnboardingStepId[] = [
   'kanban_drag',
 ]
 
-export const CHECKLIST_META: { id: OnboardingStepId; label: string; hint: string }[] = [
+const CHECKLIST_META_COPY = [
   { id: 'create_task', label: 'Create a task', hint: 'Save from Create task' },
   { id: 'open_task_reader', label: 'Open task details', hint: 'Tap/click a task card to open full read-only view' },
   { id: 'search', label: 'Search tasks', hint: 'Type in search field' },
@@ -26,7 +38,7 @@ export const CHECKLIST_META: { id: OnboardingStepId; label: string; hint: string
   {
     id: 'filter_sort_demo',
     label: 'Sort tasks',
-    hint: 'Change sort field or direction in the filters panel',
+    hint: 'Change sort from the filters panel or list column headers',
   },
   { id: 'view_modes', label: 'Try another view mode', hint: 'Summary / List / Kanban (wide only)' },
   {
@@ -53,13 +65,38 @@ export const CHECKLIST_META: { id: OnboardingStepId; label: string; hint: string
   { id: 'motion', label: 'Set motion level', hint: 'System / reduced / full' },
   { id: 'startup_view', label: 'Set startup view', hint: 'Remember or fixed view' },
   { id: 'restore_defaults', label: 'Restore defaults', hint: 'Reset all UI preferences' },
-]
+  {
+    id: 'admin_main_tabs',
+    label: 'Use admin toolbar sections',
+    hint: 'Switch to Users or Audit from the toolbar (admins, wide layout)',
+    requiresAdmin: true,
+  },
+  {
+    id: 'admin_users_filters',
+    label: 'Filter and sort users',
+    hint: 'On Users: open filters, search, pick a role, sort columns, paginate',
+    requiresAdmin: true,
+  },
+  {
+    id: 'admin_audit_review',
+    label: 'Review audit logs',
+    hint: 'Open Audit to inspect changes with filters; sort via column headers',
+    requiresAdmin: true,
+  },
+ ] as const
+
+export const CHECKLIST_META: {
+  id: OnboardingStepId
+  label: string
+  hint: string
+  requiresAdmin?: boolean
+}[] = [...CHECKLIST_META_COPY]
 
 /** Steps that count toward the gamified checklist (excludes welcome/toolbar intro). */
 export const CHECKLIST_STEP_IDS: OnboardingStepId[] = CHECKLIST_META.map((m) => m.id)
 
 /** Ordered guided tour steps (subset is used on narrow viewports). */
-export const TOUR_STEP_DEFS: TourStepDef[] = [
+const TOUR_STEP_DEFS_COPY = [
   {
     id: 'welcome',
     title: 'Welcome',
@@ -77,42 +114,42 @@ export const TOUR_STEP_DEFS: TourStepDef[] = [
     id: 'theme',
     title: 'Theme',
     body: 'Switch between light and dark mode for comfortable reading in any environment.',
-    targetTourAttr: 'help-settings',
+    targetTourAttr: 'help-settings-theme',
     interactive: true,
   },
   {
     id: 'text_size',
     title: 'Text size',
     body: 'Use the six-step text scale slider to tune readability. Changes apply instantly and are saved on this device.',
-    targetTourAttr: 'help-settings',
+    targetTourAttr: 'help-settings-text-size',
     interactive: true,
   },
   {
     id: 'density',
     title: 'Density',
     body: 'Switch between comfortable and compact spacing. Compact mode fits more content across mobile and desktop.',
-    targetTourAttr: 'help-settings',
+    targetTourAttr: 'help-settings-density',
     interactive: true,
   },
   {
     id: 'motion',
     title: 'Motion',
     body: 'Choose motion behavior: follow system accessibility, force reduced motion, or force full animation.',
-    targetTourAttr: 'help-settings',
+    targetTourAttr: 'help-settings-motion',
     interactive: true,
   },
   {
     id: 'startup_view',
     title: 'Startup view',
     body: 'Choose whether the app remembers your last view or always starts in cards, list, or kanban.',
-    targetTourAttr: 'help-settings',
+    targetTourAttr: 'help-settings-startup',
     interactive: true,
   },
   {
     id: 'restore_defaults',
     title: 'Restore defaults',
     body: 'Use Restore defaults to quickly return to the baseline UI preferences if custom settings feel off.',
-    targetTourAttr: 'help-settings',
+    targetTourAttr: 'help-settings-restore',
     interactive: true,
   },
   {
@@ -167,8 +204,8 @@ export const TOUR_STEP_DEFS: TourStepDef[] = [
   },
   {
     id: 'filter_sort_demo',
-    title: 'Sort from filters',
-    body: 'With filters open, use Sort to change which field orders tasks (due date, title, priority) and tap Asc/Des to flip direction. The list updates immediately.',
+    title: 'Sort tasks',
+    body: 'With filters open, use Sort to pick the field and Asc/Des for direction. In List view you can also click a column title: the active column shows ↑ or ↓, and other sortable columns show ⇕ until selected.',
     targetTourAttr: 'filter-sort',
     skipOnNarrow: true,
     wideOnly: true,
@@ -210,7 +247,39 @@ export const TOUR_STEP_DEFS: TourStepDef[] = [
     wideOnly: true,
     interactive: true,
   },
-]
+  {
+    id: 'admin_main_tabs',
+    title: 'Admin sections',
+    body: 'As an administrator, use Tasks for everyday work, Users to manage accounts, and Audit to review changes. These tabs sit beside the view mode controls.',
+    targetTourAttr: 'admin-main-tab',
+    skipOnNarrow: true,
+    wideOnly: true,
+    requiresAdmin: true,
+    interactive: true,
+  },
+  {
+    id: 'admin_users_filters',
+    title: 'User administration',
+    body: 'On the Users tab, search and filter by role, sort the table, and use pagination. Edit names from the row actions, send password resets, adjust roles, or remove accounts. Bulk actions apply when you select rows.',
+    targetTourAttr: 'admin-users-panel',
+    skipOnNarrow: true,
+    wideOnly: true,
+    requiresAdmin: true,
+    interactive: true,
+  },
+  {
+    id: 'admin_audit_review',
+    title: 'Audit trail',
+    body: 'The Audit tab lists create, edit, and delete events. Filter by person, text, or changed field. Click a column heading to sort: ↑/↓ on the active column, ⇕ on the others (Raw data is not sortable).',
+    targetTourAttr: 'admin-audit-panel',
+    skipOnNarrow: true,
+    wideOnly: true,
+    requiresAdmin: true,
+    interactive: true,
+  },
+ ] as const
+
+export const TOUR_STEP_DEFS: TourStepDef[] = [...TOUR_STEP_DEFS_COPY]
 
 export function tourStepsForLayout(isNarrow: boolean): TourStepDef[] {
   const list = TOUR_STEP_DEFS.filter((s) => {
@@ -230,17 +299,39 @@ export function tourStepsForLayout(isNarrow: boolean): TourStepDef[] {
   })
 }
 
+/** Tour steps for the signed-in user’s role (viewers skip mutation steps; non-admins skip admin-only steps). */
+export function tourStepsForRoleAndLayout(isNarrow: boolean, role: UserRole | null): TourStepDef[] {
+  return tourStepsForLayout(isNarrow).filter((s) => {
+    if (s.requiresAdmin && role !== 'admin') return false
+    if (role === 'viewer' && VIEWER_EXCLUDED_MUTATION_STEP_IDS.has(s.id)) return false
+    return true
+  })
+}
+
 export function checklistIdsForLayout(isNarrow: boolean): OnboardingStepId[] {
   const wideOnly = new Set<OnboardingStepId>([
     'filter_sort_demo',
     'list_multiselect',
     'list_bulk_delete',
     'kanban_drag',
+    'admin_main_tabs',
+    'admin_users_filters',
+    'admin_audit_review',
   ])
   return CHECKLIST_META.filter((m) => {
     if (!isNarrow && m.id === 'card_swipe') return false
     if (isNarrow && m.id === 'view_modes') return false
     if (isNarrow && wideOnly.has(m.id)) return false
+    return true
+  }).map((m) => m.id)
+}
+
+export function checklistIdsForRoleAndLayout(isNarrow: boolean, role: UserRole | null): OnboardingStepId[] {
+  const layoutIds = new Set(checklistIdsForLayout(isNarrow))
+  return CHECKLIST_META.filter((m) => {
+    if (!layoutIds.has(m.id)) return false
+    if (m.requiresAdmin && role !== 'admin') return false
+    if (role === 'viewer' && VIEWER_EXCLUDED_MUTATION_STEP_IDS.has(m.id)) return false
     return true
   }).map((m) => m.id)
 }

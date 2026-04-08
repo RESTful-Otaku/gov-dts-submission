@@ -4,43 +4,44 @@
 
 <script lang="ts">
   import type { ViewMode } from '../../lib/app/types'
+  import { UI_COPY } from '../../lib/app/copy'
 
   export let viewMode: ViewMode
   export let onSetViewMode: (next: ViewMode) => void
 </script>
 
-<div class="view-toggle" data-tour="view-mode" aria-label="View mode">
+<div class="view-toggle" data-tour="view-mode" aria-label={UI_COPY.tasks.views.viewModeAria}>
   <button
     type="button"
     class="btn-icon-compact"
     class:selected={viewMode === 'cards'}
     on:click={() => onSetViewMode('cards')}
-    title="Summary view"
-    aria-label="Summary"
+    title={UI_COPY.tasks.views.summaryView}
+    aria-label={UI_COPY.tasks.views.summary}
   >
     <span class="btn-icon-compact__icon" aria-hidden="true">▦</span>
-    <span class="btn-icon-compact__label">Summary</span>
+    <span class="btn-icon-compact__label">{UI_COPY.tasks.views.summary}</span>
   </button>
   <button
     type="button"
     class="btn-icon-compact"
     class:selected={viewMode === 'list'}
     on:click={() => onSetViewMode('list')}
-    title="List view"
-    aria-label="List"
+    title={UI_COPY.tasks.views.listView}
+    aria-label={UI_COPY.tasks.views.list}
   >
     <span class="btn-icon-compact__icon" aria-hidden="true">☰</span>
-    <span class="btn-icon-compact__label">List</span>
+    <span class="btn-icon-compact__label">{UI_COPY.tasks.views.list}</span>
   </button>
   <button
     type="button"
     class="btn-icon-compact"
     class:selected={viewMode === 'kanban'}
     on:click={() => onSetViewMode('kanban')}
-    title="Kanban view"
-    aria-label="Kanban"
+    title={UI_COPY.tasks.views.kanbanView}
+    aria-label={UI_COPY.tasks.views.kanban}
   >
     <span class="btn-icon-compact__icon" aria-hidden="true">▤</span>
-    <span class="btn-icon-compact__label">Kanban</span>
+    <span class="btn-icon-compact__label">{UI_COPY.tasks.views.kanban}</span>
   </button>
 </div>

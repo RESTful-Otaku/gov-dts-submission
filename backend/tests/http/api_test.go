@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,9 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/mattn/go-sqlite3"
 	httpapi "github.com/j-m-harrison/dts-submission/internal/http"
+	"github.com/j-m-harrison/dts-submission/internal/seed"
 	"github.com/j-m-harrison/dts-submission/internal/storage"
+	"github.com/j-m-harrison/dts-submission/internal/task"
 )
 
 func newTestServer(t *testing.T) *http.ServeMux {
@@ -28,6 +32,17 @@ func newTestServer(t *testing.T) *http.ServeMux {
 	s := httpapi.NewServerWithDriver(db, "sqlite3")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
+	ctx := context.Background()
+	// Auth tables (users, audit_logs, …) are created on first auth handler; seed demo rows for integration tests.
+	initReq := httptest.NewRequest(http.MethodPost, "/api/auth/recover", strings.NewReader(`{"email":"init@example.gov"}`))
+	initReq.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(httptest.NewRecorder(), initReq)
+	if err := seed.DemoUsersWithDriver(ctx, db, "sqlite3"); err != nil {
+		t.Fatalf("seed demo users: %v", err)
+	}
+	if err := seed.DemoTasksWithDriver(ctx, db, "sqlite3"); err != nil {
+		t.Fatalf("seed demo tasks: %v", err)
+	}
 	return mux
 }
 
@@ -109,6 +124,15 @@ func TestCreateTask_ValidationErrors(t *testing.T) {
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing title, got %d", rr.Code)
+	}
+	// whitespace-only title
+	body = `{"title":"   ","status":"todo","dueAt":"` + due + `"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for whitespace-only title, got %d", rr.Code)
 	}
 	// past due
 	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
@@ -244,6 +268,12 @@ func TestCORSPreflight_Options(t *testing.T) {
 	}
 	if allow := rr.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "Authorization") {
 		t.Fatalf("expected Authorization in Access-Control-Allow-Headers, got %q", allow)
+	}
+	if allow := rr.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "X-API-Audience") {
+		t.Fatalf("expected X-API-Audience in Access-Control-Allow-Headers, got %q", allow)
+	}
+	if allow := rr.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "X-API-Issuer") {
+		t.Fatalf("expected X-API-Issuer in Access-Control-Allow-Headers, got %q", allow)
 	}
 	if rr.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatalf("expected security header X-Frame-Options, got %q", rr.Header().Get("X-Frame-Options"))
@@ -546,9 +576,62 @@ func TestListTasks_InvalidLimit(t *testing.T) {
 	}
 }
 
+func TestListTasks_FilterSortQueryParams(t *testing.T) {
+	mux := newTestServer(t)
+	due := time.Now().UTC().Add(2 * time.Hour)
+	cases := []string{
+		`{"title":"Alpha review","status":"todo","priority":"high","owner":"Caseworker A","tags":["evidence"],"dueAt":"` + due.Add(3*time.Hour).Format(time.RFC3339) + `"}`,
+		`{"title":"Beta hearing","status":"in_progress","priority":"normal","owner":"Caseworker B","tags":["hearing"],"dueAt":"` + due.Add(1*time.Hour).Format(time.RFC3339) + `"}`,
+		`{"title":"Gamma evidence","status":"in_progress","priority":"urgent","owner":"Caseworker B","tags":["evidence"],"dueAt":"` + due.Add(2*time.Hour).Format(time.RFC3339) + `"}`,
+	}
+	for _, body := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("create expected 201, got %d", rr.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks?status=in_progress&owner=caseworker%20b&tag=evidence&sort=title&order=desc", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var list []map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 filtered task, got %d", len(list))
+	}
+	if title, _ := list[0]["title"].(string); title != "Gamma evidence" {
+		t.Fatalf("expected Gamma evidence, got %q", title)
+	}
+}
+
+func TestListTasks_InvalidSortAndOrder(t *testing.T) {
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks?sort=unknown", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid sort, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/tasks?order=sideways", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid order, got %d", rr.Code)
+	}
+}
+
 func TestTasksEndpoints_RequireBearerToken_OutsideDevelopment(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("API_AUTH_TOKEN", "secret-token")
+	t.Setenv("API_AUTH_TOKEN", "12345678901234567890123456789012")
 	mux := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
 	rr := httptest.NewRecorder()
@@ -560,13 +643,301 @@ func TestTasksEndpoints_RequireBearerToken_OutsideDevelopment(t *testing.T) {
 
 func TestTasksEndpoints_AcceptBearerToken_WhenConfigured(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("API_AUTH_TOKEN", "secret-token")
+	t.Setenv("API_AUTH_TOKEN", "12345678901234567890123456789012")
 	mux := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
-	req.Header.Set("Authorization", "Bearer secret-token")
+	req.Header.Set("Authorization", "Bearer 12345678901234567890123456789012")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_AcceptBearerToken_FromTokenList(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_TOKENS", "12345678901234567890123456789012,abcdefghijklmnopqrstuvwxyz123456")
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_RejectShortToken_InProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_TOKEN", "short-token")
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer short-token")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_RequireAudience_WhenConfigured(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_TOKEN", "12345678901234567890123456789012")
+	t.Setenv("API_AUTH_ALLOWED_AUDIENCE", "mobile-app")
+	mux := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer 12345678901234567890123456789012")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without audience, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer 12345678901234567890123456789012")
+	req.Header.Set("X-API-Audience", "mobile-app")
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid audience, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_RequireIssuer_WhenConfigured(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_TOKEN", "12345678901234567890123456789012")
+	t.Setenv("API_AUTH_ALLOWED_ISSUERS", "issuer-a,issuer-b")
+	mux := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer 12345678901234567890123456789012")
+	req.Header.Set("X-API-Issuer", "issuer-x")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with wrong issuer, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer 12345678901234567890123456789012")
+	req.Header.Set("X-API-Issuer", "issuer-b")
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid issuer, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_AcceptJWT_WhenConfigured(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_MODE", "jwt")
+	t.Setenv("JWT_HS256_SECRET", "12345678901234567890123456789012")
+	t.Setenv("API_AUTH_ALLOWED_AUDIENCE", "task-api")
+	t.Setenv("API_AUTH_ALLOWED_ISSUERS", "issuer-1")
+	claims := jwt.RegisteredClaims{
+		Issuer:    "issuer-1",
+		Audience:  jwt.ClaimStrings{"task-api"},
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	raw, err := token.SignedString([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_RejectJWT_WhenRequiredScopeMissing(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_MODE", "jwt")
+	t.Setenv("JWT_HS256_SECRET", "12345678901234567890123456789012")
+	t.Setenv("API_AUTH_ALLOWED_AUDIENCE", "task-api")
+	t.Setenv("API_AUTH_ALLOWED_ISSUERS", "issuer-1")
+	t.Setenv("API_AUTH_REQUIRED_SCOPES", "tasks:write")
+	claims := jwt.RegisteredClaims{
+		Issuer:    "issuer-1",
+		Audience:  jwt.ClaimStrings{"task-api"},
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	raw, err := token.SignedString([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_AcceptJWT_WhenRequiredScopePresent(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_MODE", "jwt")
+	t.Setenv("JWT_HS256_SECRET", "12345678901234567890123456789012")
+	t.Setenv("API_AUTH_ALLOWED_AUDIENCE", "task-api")
+	t.Setenv("API_AUTH_ALLOWED_ISSUERS", "issuer-1")
+	t.Setenv("API_AUTH_REQUIRED_SCOPES", "tasks:write")
+	type scopedClaims struct {
+		jwt.RegisteredClaims
+		Scope string `json:"scope"`
+	}
+	claims := scopedClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "issuer-1",
+			Audience:  jwt.ClaimStrings{"task-api"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		},
+		Scope: "tasks:write",
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	raw, err := token.SignedString([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_RouteLevelScopes_ReadVsWrite(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_MODE", "jwt")
+	t.Setenv("JWT_HS256_SECRET", "12345678901234567890123456789012")
+	t.Setenv("API_AUTH_ALLOWED_AUDIENCE", "task-api")
+	t.Setenv("API_AUTH_ALLOWED_ISSUERS", "issuer-1")
+	t.Setenv("API_AUTH_REQUIRED_SCOPE_READ", "tasks:read")
+	t.Setenv("API_AUTH_REQUIRED_SCOPE_WRITE", "tasks:write")
+	type scopedClaims struct {
+		jwt.RegisteredClaims
+		Scope string `json:"scope"`
+	}
+	claims := scopedClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "issuer-1",
+			Audience:  jwt.ClaimStrings{"task-api"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		},
+		Scope: "tasks:read",
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	raw, err := token.SignedString([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	mux := newTestServer(t)
+
+	// GET /api/tasks should pass with read scope.
+	getReq := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	getReq.Header.Set("Authorization", "Bearer "+raw)
+	getRR := httptest.NewRecorder()
+	mux.ServeHTTP(getRR, getReq)
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("expected GET 200, got %d", getRR.Code)
+	}
+
+	// POST /api/tasks should fail without write scope.
+	postReq := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(`{"title":"Scoped task","status":"todo","dueAt":"2099-01-01T10:00:00Z"}`))
+	postReq.Header.Set("Authorization", "Bearer "+raw)
+	postReq.Header.Set("Content-Type", "application/json")
+	postRR := httptest.NewRecorder()
+	mux.ServeHTTP(postRR, postReq)
+	if postRR.Code != http.StatusForbidden {
+		t.Fatalf("expected POST 403, got %d", postRR.Code)
+	}
+}
+
+func TestTasksEndpoints_RejectJWTMisconfiguration(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_MODE", "jwt")
+	t.Setenv("JWT_HS256_SECRET", "")
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer dummy")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rr.Code)
+	}
+}
+
+func TestTasksEndpoints_RejectOIDCMisconfiguration(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_MODE", "oidc")
+	t.Setenv("OIDC_ISSUER_URL", "")
+	t.Setenv("OIDC_AUDIENCE", "")
+	mux := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	req.Header.Set("Authorization", "Bearer dummy")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rr.Code)
+	}
+}
+
+type alwaysConflictStore struct{}
+
+func (alwaysConflictStore) CreateTask(context.Context, task.NewTaskInput) (*task.Task, error) {
+	return nil, errors.New("not used")
+}
+
+func (alwaysConflictStore) GetTask(context.Context, string) (*task.Task, error) {
+	return &task.Task{
+		ID:        "550e8400-e29b-41d4-a716-446655440001",
+		Title:     "existing",
+		Status:    task.StatusTodo,
+		Priority:  task.PriorityNormal,
+		DueAt:     time.Now().UTC().Add(time.Hour),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}, nil
+}
+
+func (alwaysConflictStore) ListTasks(context.Context, storage.ListOptions) ([]*task.Task, error) {
+	return []*task.Task{}, nil
+}
+
+func (alwaysConflictStore) UpdateTaskStatus(context.Context, string, task.Status) (*task.Task, error) {
+	return nil, storage.ErrConflict
+}
+
+func (alwaysConflictStore) UpdateTask(context.Context, string, *task.UpdateTaskInput) (*task.Task, error) {
+	return nil, storage.ErrConflict
+}
+
+func (alwaysConflictStore) DeleteTask(context.Context, string) error {
+	return nil
+}
+
+func TestUpdateTaskStatus_ConflictMapsTo409(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	s := httpapi.NewServerWithStore(alwaysConflictStore{}, nil)
+	mux := http.NewServeMux()
+	s.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/tasks/550e8400-e29b-41d4-a716-446655440001", strings.NewReader(`{"status":"done"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", rr.Code)
 	}
 }

@@ -313,7 +313,7 @@ describe('TaskControlsBar', () => {
       },
     })
 
-    await user.click(getByRole('button', { name: 'Open menu' }))
+    await user.click(getByRole('button', { name: 'Open profile menu' }))
     expect(onToggleMenu).toHaveBeenCalledTimes(1)
   })
 
@@ -342,7 +342,40 @@ describe('TaskControlsBar', () => {
       },
     })
 
-    expect(queryByRole('button', { name: 'Open menu' })).toBeNull()
+    expect(queryByRole('button', { name: 'Open profile menu' })).toBeNull()
+  })
+
+  it('renders active filter chips and removes selected chip', async () => {
+    const user = userEvent.setup()
+    const onRemoveActiveFilterChip = vi.fn()
+    const { getByRole } = render(TaskControlsBar, {
+      props: {
+        isNarrow: false,
+        mobileSearchExpanded: false,
+        showFilters: false,
+        viewMode: 'cards',
+        searchTerm: '',
+        searchInput: null,
+        onCreateClick: vi.fn(),
+        onToggleFilters: vi.fn(),
+        onSetViewMode: vi.fn(),
+        onSearchTermChange: vi.fn(),
+        onExpandMobileSearch: vi.fn(),
+        onCollapseMobileSearch: vi.fn(),
+        hasActiveFilters: true,
+        activeFilterChips: [{ id: 'status', kind: 'status', label: 'Status: Done' }],
+        onClearAllFilters: vi.fn(),
+        onRemoveActiveFilterChip,
+        showBackToTop: false,
+        onScrollToTop: vi.fn(),
+        showMenuInToolbar: false,
+        menuOpen: false,
+        onToggleMenu: vi.fn(),
+      },
+    })
+
+    await user.click(getByRole('button', { name: 'Remove Status: Done' }))
+    expect(onRemoveActiveFilterChip).toHaveBeenCalledWith('status', 'status')
   })
 })
 

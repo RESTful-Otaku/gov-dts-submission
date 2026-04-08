@@ -17,7 +17,7 @@ describe('AppHeader', () => {
     expect(getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
     expect(getByText('Capture, prioritise, and complete tasks.')).toBeVisible()
 
-    expect(getByRole('button', { name: 'Open menu' })).toBeVisible()
+    expect(getByRole('button', { name: 'Open profile menu' })).toBeVisible()
   })
 
   it('invokes callback when toggling menu', async () => {
@@ -31,7 +31,7 @@ describe('AppHeader', () => {
       },
     })
 
-    await user.click(getByRole('button', { name: 'Open menu' }))
+    await user.click(getByRole('button', { name: 'Open profile menu' }))
     expect(onToggleMenu).toHaveBeenCalledTimes(1)
   })
 
@@ -44,7 +44,7 @@ describe('AppHeader', () => {
       },
     })
 
-    expect(queryByRole('button', { name: 'Open menu' })).toBeNull()
+    expect(queryByRole('button', { name: 'Open profile menu' })).toBeNull()
   })
 })
 

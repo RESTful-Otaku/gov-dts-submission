@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
+  import type { SortKey } from '../../lib/app/types'
+  import { tableSortGlyph } from '../../lib/ui/tableSortGlyph'
   import SveltyPicker from 'svelty-picker'
   import type { Action } from 'svelte/action'
   import type { i18nType } from 'svelty-picker/i18n'
@@ -8,6 +11,7 @@
   import TaskListRow from './TaskListRow.svelte'
 
   export let isNarrow: boolean
+  export let canMutateTasks = true
   export let visibleTasks: Task[]
   export let listTasksDisplay: Task[]
   export let selectedTaskIds: Set<string>
@@ -46,16 +50,28 @@
   export let formatDate: (value: string) => string
   export let tourSpotlightStepId: OnboardingStepId | null = null
   export let tourAnchorTaskId: string | null = null
+
+  export let sortKey: SortKey
+  export let sortAscending: boolean
+  export let onSortColumn: (key: SortKey) => void
+
+  type BulkStatusHandlerMap = Partial<Record<TaskStatus, () => void>>
+  let bulkStatusHandlers: BulkStatusHandlerMap = {}
+
+  $: bulkStatusHandlers = Object.fromEntries(
+    STATUS_OPTIONS.map((opt) => [opt.value, () => bulkSetStatus(opt.value)]),
+  ) as BulkStatusHandlerMap
 </script>
 
-<div class="list-wrapper" role="region" aria-label="Tasks in list view" data-tour="pick-task">
-  <form class="quick-add-row" on:submit|preventDefault={handleQuickAdd} aria-label="Quick add task">
+<div class="list-wrapper" role="region" aria-label={UI_COPY.tasks.views.listRegionAria} data-tour="pick-task">
+  {#if canMutateTasks}
+  <form class="quick-add-row" on:submit|preventDefault={handleQuickAdd} aria-label={UI_COPY.tasks.views.quickAddAria}>
     <input
       type="text"
       class="quick-add-title"
-      placeholder="Quick add: enter title..."
+      placeholder={UI_COPY.tasks.views.quickAddPlaceholder}
       bind:value={quickAddTitle}
-      aria-label="Task title"
+      aria-label={UI_COPY.tasks.views.quickAddTitleAria}
     />
     <div class="quick-add-picker-wrap">
       <SveltyPicker
@@ -63,7 +79,7 @@
         format={DATETIME_FORMAT}
         formatType="standard"
         bind:value={quickAddDateTimeStr}
-        placeholder="DD-MM-YYYY HH:MM AM/PM"
+        placeholder={UI_COPY.tasks.views.quickAddDatePlaceholder}
         i18n={PICKER_I18N}
         weekStart={1}
         todayBtn
@@ -72,23 +88,24 @@
         inputClasses="quick-add-due-input"
       />
     </div>
-    <button type="submit" class="btn-quick-add btn-icon-compact" disabled={quickAddSubmitting} aria-label="Add task">
+    <button type="submit" class="btn-quick-add btn-icon-compact" disabled={quickAddSubmitting} aria-label={UI_COPY.tasks.views.quickAddButtonAria}>
       <span class="btn-icon-compact__icon" aria-hidden="true">{quickAddSubmitting ? '⏳' : '＋'}</span>
-      <span class="btn-icon-compact__label">{quickAddSubmitting ? 'Adding…' : 'Add'}</span>
+      <span class="btn-icon-compact__label">{quickAddSubmitting ? UI_COPY.tasks.views.quickAddAdding : UI_COPY.tasks.views.quickAddAdd}</span>
     </button>
   </form>
-  {#if selectedTaskIds.size > 0}
-    <div class="bulk-actions" role="toolbar" aria-label="Bulk actions for selected tasks">
-      <span class="bulk-actions-label">{selectedTaskIds.size} selected</span>
+  {/if}
+  {#if canMutateTasks && selectedTaskIds.size > 0}
+    <div class="bulk-actions" role="toolbar" aria-label={UI_COPY.tasks.views.bulkActionsAria}>
+      <span class="bulk-actions-label">{selectedTaskIds.size} {UI_COPY.tasks.views.selectedSuffix}</span>
       <div class="bulk-actions-buttons">
-        <span class="bulk-status-label">Mark as:</span>
+        <span class="bulk-status-label">{UI_COPY.tasks.views.markAs}</span>
         {#each STATUS_OPTIONS as opt}
           <button
             type="button"
             class="btn-icon-compact"
-            on:click={() => bulkSetStatus(opt.value)}
-            title={`Mark selected tasks as ${opt.label}`}
-            aria-label={`Mark selected tasks as ${opt.label}`}
+            on:click={bulkStatusHandlers[opt.value]}
+            title={`${UI_COPY.tasks.views.markSelectedPrefix}${opt.label}`}
+            aria-label={`${UI_COPY.tasks.views.markSelectedPrefix}${opt.label}`}
           >
             <span class="btn-icon-compact__icon" aria-hidden="true">✓</span>
             <span class="btn-icon-compact__label">{opt.label}</span>
@@ -99,35 +116,35 @@
           class="danger btn-icon-compact"
           data-tour={tourSpotlightStepId === 'list_bulk_delete' ? 'tour-list-bulk-delete' : undefined}
           on:click={openBulkDeleteModal}
-          title="Delete selected tasks"
-          aria-label="Delete selected tasks"
+          title={UI_COPY.tasks.views.deleteSelectedAria}
+          aria-label={UI_COPY.tasks.views.deleteSelectedAria}
         >
           <span class="btn-icon-compact__icon" aria-hidden="true">🗑</span>
-          <span class="btn-icon-compact__label">Delete selected</span>
+          <span class="btn-icon-compact__label">{UI_COPY.tasks.views.deleteSelected}</span>
         </button>
-        <button type="button" class="btn-clear-selection btn-icon-compact" on:click={clearListSelection} aria-label="Clear selection">
+        <button type="button" class="btn-clear-selection btn-icon-compact" on:click={clearListSelection} aria-label={UI_COPY.tasks.views.clearSelectionAria}>
           <span class="btn-icon-compact__icon" aria-hidden="true">✕</span>
-          <span class="btn-icon-compact__label">Clear selection</span>
+          <span class="btn-icon-compact__label">{UI_COPY.tasks.views.clearSelection}</span>
         </button>
       </div>
     </div>
   {/if}
-  {#if !isNarrow && visibleTasks.length > listTasksDisplay.length}
+  {#if canMutateTasks && !isNarrow && visibleTasks.length > listTasksDisplay.length}
     <div class="list-select-all-bar" role="status">
       {#if allVisibleTasksSelected}
-        <span class="list-select-all-text">All {visibleTasks.length} tasks selected.</span>
+        <span class="list-select-all-text">{UI_COPY.tasks.views.allSelectedPrefix}{visibleTasks.length}{UI_COPY.tasks.views.allSelectedSuffix}</span>
         <button type="button" class="list-select-all-link" on:click={clearListSelection}>
-          Clear selection
+          {UI_COPY.tasks.views.clearSelection}
         </button>
       {:else}
-        <span class="list-select-all-text">{visibleTasks.length} tasks in list.</span>
+        <span class="list-select-all-text">{visibleTasks.length}{UI_COPY.tasks.views.tasksInListSuffix}</span>
         <button
           type="button"
           class="list-select-all-link"
           on:click={selectAllInListView}
-          aria-label="Select all {visibleTasks.length} tasks in list"
+          aria-label={`${UI_COPY.tasks.views.selectAllInListPrefix}${visibleTasks.length}${UI_COPY.tasks.views.selectAllInListSuffix}`}
         >
-          Select all {visibleTasks.length} tasks in list
+          {UI_COPY.tasks.views.selectAllInListPrefix}{visibleTasks.length}{UI_COPY.tasks.views.selectAllInListSuffix}
         </button>
       {/if}
     </div>
@@ -135,38 +152,90 @@
   <table class="task-table">
     <thead>
       <tr>
-        <th scope="col" class="col-select" data-tour={tourSpotlightStepId === 'list_multiselect' ? 'tour-list-select' : undefined}>
-          <label class="select-all-label">
-            <input
-              type="checkbox"
-              aria-label={!isNarrow && visibleTasks.length > listTasksDisplay.length
-                ? 'Select all on this page'
-                : 'Select all tasks in list'}
-              checked={listTasksDisplay.length > 0 && selectedTaskIds.size === listTasksDisplay.length}
-              use:setIndeterminate={isSelectAllIndeterminate}
-              on:change={selectAllInList}
-            />
-          </label>
+        {#if canMutateTasks}
+          <th scope="col" class="col-select" data-tour={tourSpotlightStepId === 'list_multiselect' ? 'tour-list-select' : undefined}>
+            <label class="select-all-label">
+              <input
+                type="checkbox"
+                aria-label={!isNarrow && visibleTasks.length > listTasksDisplay.length
+                  ? UI_COPY.tasks.views.selectAllOnPage
+                  : UI_COPY.tasks.views.selectAllTasksInList}
+                checked={listTasksDisplay.length > 0 && selectedTaskIds.size === listTasksDisplay.length}
+                use:setIndeterminate={isSelectAllIndeterminate}
+                on:change={selectAllInList}
+              />
+            </label>
+          </th>
+        {/if}
+        <th
+          scope="col"
+          aria-sort={sortKey === 'title' ? (sortAscending ? 'ascending' : 'descending') : 'none'}
+        >
+          <button type="button" class="th-sort" on:click={() => onSortColumn('title')}>
+            {UI_COPY.tasks.views.tableTitle}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'title', sortAscending)}</span>
+          </button>
         </th>
-        <th scope="col">Title</th>
-        <th scope="col">Priority</th>
-        <th scope="col">Owner</th>
-        <th scope="col">Status</th>
-        <th scope="col">Due</th>
-        <th scope="col">Tags</th>
-        <th scope="col">Created</th>
-        <th scope="col">Actions</th>
+        <th
+          scope="col"
+          aria-sort={sortKey === 'priority' ? (sortAscending ? 'ascending' : 'descending') : 'none'}
+        >
+          <button type="button" class="th-sort" on:click={() => onSortColumn('priority')}>
+            {UI_COPY.tasks.views.tablePriority}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'priority', sortAscending)}</span>
+          </button>
+        </th>
+        <th
+          scope="col"
+          aria-sort={sortKey === 'owner' ? (sortAscending ? 'ascending' : 'descending') : 'none'}
+        >
+          <button type="button" class="th-sort" on:click={() => onSortColumn('owner')}>
+            {UI_COPY.tasks.views.tableOwner}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'owner', sortAscending)}</span>
+          </button>
+        </th>
+        <th
+          scope="col"
+          aria-sort={sortKey === 'status' ? (sortAscending ? 'ascending' : 'descending') : 'none'}
+        >
+          <button type="button" class="th-sort" on:click={() => onSortColumn('status')}>
+            {UI_COPY.tasks.views.tableStatus}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'status', sortAscending)}</span>
+          </button>
+        </th>
+        <th scope="col" aria-sort={sortKey === 'due' ? (sortAscending ? 'ascending' : 'descending') : 'none'}>
+          <button type="button" class="th-sort" on:click={() => onSortColumn('due')}>
+            {UI_COPY.tasks.views.tableDue}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'due', sortAscending)}</span>
+          </button>
+        </th>
+        <th scope="col" aria-sort={sortKey === 'tags' ? (sortAscending ? 'ascending' : 'descending') : 'none'}>
+          <button type="button" class="th-sort" on:click={() => onSortColumn('tags')}>
+            {UI_COPY.tasks.views.tableTags}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'tags', sortAscending)}</span>
+          </button>
+        </th>
+        <th scope="col" aria-sort={sortKey === 'created' ? (sortAscending ? 'ascending' : 'descending') : 'none'}>
+          <button type="button" class="th-sort" on:click={() => onSortColumn('created')}>
+            {UI_COPY.tasks.views.tableCreated}{' '}
+            <span class="th-sort__glyph" aria-hidden="true">{tableSortGlyph(sortKey === 'created', sortAscending)}</span>
+          </button>
+        </th>
+        {#if canMutateTasks}
+          <th scope="col">{UI_COPY.tasks.views.tableActions}</th>
+        {/if}
       </tr>
     </thead>
     <tbody>
       {#if listTasksDisplay.length === 0}
         <tr>
-          <td colspan="9" class="empty-cell">No tasks match your current search or filters.</td>
+          <td colspan={canMutateTasks ? 9 : 7} class="empty-cell">{UI_COPY.tasks.views.emptyState}</td>
         </tr>
       {:else}
       {#each listTasksDisplay as taskItem}
         <TaskListRow
           {taskItem}
+          {canMutateTasks}
           selected={selectedTaskIds.has(taskItem.id)}
           tourOpenSpotlight={tourAnchorTaskId === taskItem.id && tourSpotlightStepId === 'open_task_reader'}
           tourEditSpotlight={tourAnchorTaskId === taskItem.id && tourSpotlightStepId === 'edit_task'}

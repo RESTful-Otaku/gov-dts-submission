@@ -90,6 +90,20 @@
   outline-offset: 2px;
 }
 
+.btn-help-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .help-modal-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -205,12 +219,6 @@
 .help-check-text span {
   font-size: 0.8rem;
   color: var(--color-muted);
-}
-
-.help-sections-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
 }
 
 .help-section-row {
@@ -339,6 +347,18 @@
   width: 100%;
 }
 
+.input-invalid {
+  border-color: #b91c1c !important;
+  box-shadow: 0 0 0 1px #b91c1c inset;
+}
+
+.control-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
 .font-size-slider-wrap {
   display: grid;
   gap: 0.45rem;
@@ -420,6 +440,39 @@
 
 .help-tour-actions button.secondary:hover {
   background: var(--color-bg-subtle);
+}
+
+.oauth-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.oauth-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border: 1px solid currentColor;
+}
+
+.oauth-btn--github .oauth-icon {
+  background: #24292f;
+  color: #ffffff;
+}
+
+.oauth-btn--google .oauth-icon {
+  background: #ffffff;
+  color: #4285f4;
+}
+
+.oauth-btn--apple .oauth-icon {
+  background: #000000;
+  color: #ffffff;
 }
 
 .help-welcome-actions {
@@ -746,6 +799,15 @@
   padding-bottom: 1rem;
   max-height: min(80dvh, 40rem);
   box-shadow: 0 10px 36px rgba(11, 12, 12, 0.2);
+}
+
+/* Interactive tour steps: keep the sheet short so the spotlight target stays uncovered on phones. */
+.tour-coach-panel--mobile.tour-coach-panel--interactive-mobile {
+  max-height: min(46dvh, 19rem);
+}
+
+.tour-coach-panel--mobile.tour-coach-panel--mobile-top.tour-coach-panel--interactive-mobile {
+  max-height: min(42dvh, 18rem);
 }
 
 /* Minimised coach while user uses the real control */

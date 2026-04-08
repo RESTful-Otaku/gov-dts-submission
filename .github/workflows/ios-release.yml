@@ -3,11 +3,13 @@ name: iOS Release
 on:
   push:
     tags:
-      - "v1.*.*"
+      - "v*.*.*"
   workflow_dispatch:
 
 permissions:
+  attestations: write
   contents: write
+  id-token: write
 
 jobs:
   release-ios:
@@ -37,25 +39,13 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           VERSION_FILE="${{ steps.tag.outputs.version }}"
-          if [[ ! "$TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Expected tag format v1.x.x, got: $TAG"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected tag format vX.Y.Z, got: $TAG"
             exit 1
           fi
           if [[ "v${VERSION_FILE}" != "$TAG" ]]; then
             echo "VERSION mismatch: VERSION=${VERSION_FILE}, tag=${TAG}"
             exit 1
-          fi
-
-      - name: Create tag for manual dispatch
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists."
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
           fi
 
       - name: Set up Node
@@ -78,9 +68,24 @@ jobs:
           bun run check
           bun run test
 
+      - name: Configure Vite env for native mobile SQLite (SQLCipher)
+        shell: bash
+        env:
+          REPO_SECRET: ${{ secrets.VITE_MOBILE_DB_SECRET }}
+        run: |
+          set -euo pipefail
+          default="gov-dts-mobile-sqlcipher-local-dev-not-for-store"
+          echo "VITE_MOBILE_LOCAL_DB=true" >> "$GITHUB_ENV"
+          if [[ -n "${REPO_SECRET}" ]]; then
+            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${REPO_SECRET}" >> "$GITHUB_ENV"
+          else
+            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${default}" >> "$GITHUB_ENV"
+            echo "::notice::Repository secret VITE_MOBILE_DB_SECRET is not set; using the public dev placeholder. Set the secret for a production-grade SQLCipher key."
+          fi
+
       - name: Build web assets (pre-production local DB mode)
         working-directory: frontend
-        run: VITE_MOBILE_LOCAL_DB=true bun run build
+        run: bun run build
 
       - name: Sync Capacitor iOS
         working-directory: frontend
@@ -104,12 +109,27 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           APP_PATH="frontend/ios/App/build/Build/Products/Release-iphonesimulator/App.app"
           OUT_ZIP="gov-case-tracker-ios-${TAG}.app.zip"
+          OUT_SUM="${OUT_ZIP}.sha256"
           if [[ ! -d "$APP_PATH" ]]; then
             echo "Expected app bundle not found: $APP_PATH"
             exit 1
           fi
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUT_ZIP"
+          shasum -a 256 "$OUT_ZIP" > "$OUT_SUM"
           echo "ios_artifact=$OUT_ZIP" >> "$GITHUB_OUTPUT"
+          echo "ios_checksum=$OUT_SUM" >> "$GITHUB_OUTPUT"
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: ios-source-sbom.spdx.json
+          format: spdx-json
+
+      - name: Attest iOS artifact provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.artifact.outputs.ios_artifact }}
 
       - name: Create pre-release / upload iOS artifact
         uses: softprops/action-gh-release@v2
@@ -117,10 +137,15 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: gov-case-tracker-${{ steps.tag.outputs.tag }}
           prerelease: true
-          files: ${{ steps.artifact.outputs.ios_artifact }}
+          files: |
+            ${{ steps.artifact.outputs.ios_artifact }}
+            ${{ steps.artifact.outputs.ios_checksum }}
+            ios-source-sbom.spdx.json
           body: |
             Pre-production iOS build for `${{ steps.tag.outputs.tag }}`.
 
             Included iOS asset:
             - `${{ steps.artifact.outputs.ios_artifact }}`
+            - `${{ steps.artifact.outputs.ios_checksum }}`
+            - `ios-source-sbom.spdx.json`
             - Source code archives (zip/tar.gz) generated automatically by GitHub Releases

@@ -15,7 +15,8 @@ test.describe('onboarding and advanced view interactions', () => {
 
   test('guided tour starts and highlights toolbar controls', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Open menu' }).click()
+    await page.getByRole('button', { name: 'Open profile menu' }).click()
+    await page.getByRole('tab', { name: 'Guide' }).click()
     await page.getByRole('button', { name: 'Start guided tour' }).click()
 
     await expect(page.locator('.tour-coach-panel')).toBeVisible()
@@ -50,7 +51,9 @@ test.describe('onboarding and advanced view interactions', () => {
     await page.getByRole('button', { name: 'Delete selected tasks' }).click()
     await expect(page.getByRole('heading', { name: /Delete \d+ tasks\?/ })).toBeVisible()
     await page.getByRole('button', { name: 'Delete tasks' }).click()
-    await expect(page.getByText('tasks deleted.')).toBeVisible()
+    await expect(page.getByText('Tasks removed. Undo?')).toBeVisible()
+    // Committed toast follows the ~4.5s undo window in the task controller.
+    await expect(page.getByText(/tasks deleted\./i)).toBeVisible({ timeout: 12_000 })
   })
 
   test('kanban view supports card interactions (open reader)', async ({ page, request }) => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   import SveltyPicker from 'svelty-picker'
   import type { i18nType } from 'svelty-picker/i18n'
 
@@ -10,13 +11,13 @@
 
 <div class="date-range">
   <label>
-    <span class="control-label">Due from</span>
+    <span class="control-label">{UI_COPY.tasks.dueDateRange.from}</span>
     <SveltyPicker
       mode="date"
       format={dateFormat}
       formatType="standard"
       bind:value={filterFrom}
-      placeholder="DD-MM-YYYY"
+      placeholder={UI_COPY.tasks.dueDateRange.placeholder}
       i18n={pickerI18n}
       weekStart={1}
       todayBtn
@@ -26,13 +27,13 @@
     />
   </label>
   <label>
-    <span class="control-label">Due to</span>
+    <span class="control-label">{UI_COPY.tasks.dueDateRange.to}</span>
     <SveltyPicker
       mode="date"
       format={dateFormat}
       formatType="standard"
       bind:value={filterTo}
-      placeholder="DD-MM-YYYY"
+      placeholder={UI_COPY.tasks.dueDateRange.placeholder}
       i18n={pickerI18n}
       weekStart={1}
       todayBtn

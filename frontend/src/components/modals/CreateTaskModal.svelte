@@ -1,10 +1,12 @@
 <script lang="ts">
   import { fade } from 'svelte/transition'
+  import { UI_COPY } from '../../lib/app/copy'
   import SveltyPicker from 'svelty-picker'
   import type { TaskPriority, TaskStatus } from '../../lib/api'
   import TaskPrioritySelect from '../forms/TaskPrioritySelect.svelte'
   import TaskStatusSelect from '../forms/TaskStatusSelect.svelte'
   import ModalHeader from './ModalHeader.svelte'
+  import FieldValidityIcon from '../forms/FieldValidityIcon.svelte'
   import type { i18nType } from 'svelty-picker/i18n'
 
   export let isNarrow: boolean
@@ -16,6 +18,8 @@
   export let status: TaskStatus
   export let priority: TaskPriority
   export let owner: string
+  /** Display names from `GET /api/users/display-names` for datalist suggestions. */
+  export let ownerDisplayNames: string[] = []
   export let tagsInput: string
   export let dueDateTimeStr: string
   export let modalFirstInput: HTMLInputElement | null
@@ -26,6 +30,13 @@
   export let closeCreateModal: () => void
   export let handleCreateTask: (event: SubmitEvent) => void
   export let handleModalBackdropClick: (event: MouseEvent) => void
+
+  export let titleFieldBlurred = false
+  export let dueFieldBlurred = false
+  export let titleFieldValid = false
+  export let dueFieldValid = false
+  export let onTitleFieldBlur: () => void = () => {}
+  export let onDueFieldBlur: () => void = () => {}
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -48,18 +59,22 @@
     on:keydown={(e) => e.key === 'Escape' && closeCreateModal()}
     transition:modalContentTransition={{ isNarrow }}
   >
-    <ModalHeader titleId="modal-title" title="Create a new task" onClose={closeCreateModal} />
+    <ModalHeader titleId="modal-title" title={UI_COPY.modals.create.title} onClose={closeCreateModal} />
 
     <form class="task-form" on:submit|preventDefault={handleCreateTask}>
       <div class="field">
-        <label for="modal-title-input">Title<span class="required">*</span></label>
+        <div class="task-field-label-row">
+          <label for="modal-title-input">Title<span class="required">*</span></label>
+          <FieldValidityIcon blurred={titleFieldBlurred} valid={titleFieldValid} />
+        </div>
         <input
           bind:this={modalFirstInput}
           id="modal-title-input"
           type="text"
           bind:value={title}
-          placeholder="e.g. Review case bundle"
+          placeholder={UI_COPY.modals.create.taskTitlePlaceholder}
           required
+          on:blur={onTitleFieldBlur}
         />
       </div>
 
@@ -69,7 +84,7 @@
           id="modal-description"
           rows="3"
           bind:value={description}
-          placeholder="Optional context or notes for this task"
+          placeholder={UI_COPY.modals.create.descriptionPlaceholder}
         ></textarea>
       </div>
 
@@ -89,8 +104,15 @@
           id="modal-owner"
           type="text"
           bind:value={owner}
-          placeholder="e.g. Caseworker A"
+          list="create-task-owner-names"
+          autocomplete="off"
+          placeholder={UI_COPY.modals.create.ownerPlaceholder}
         />
+        <datalist id="create-task-owner-names">
+          {#each ownerDisplayNames as name (name)}
+            <option value={name}></option>
+          {/each}
+        </datalist>
       </div>
 
       <div class="field">
@@ -99,20 +121,23 @@
           id="modal-tags"
           type="text"
           bind:value={tagsInput}
-          placeholder="e.g. evidence, hearing"
+          placeholder={UI_COPY.modals.create.tagsPlaceholder}
         />
       </div>
 
       <div class="field-group">
-        <div class="field">
-          <label for="modal-due-datetime">Due date and time (DD-MM-YYYY, 12-hour)<span class="required">*</span></label>
+        <div class="field" on:focusout={onDueFieldBlur}>
+          <div class="task-field-label-row">
+            <label for="modal-due-datetime">{UI_COPY.modals.create.dueLabel}<span class="required">*</span></label>
+            <FieldValidityIcon blurred={dueFieldBlurred} valid={dueFieldValid} />
+          </div>
           <SveltyPicker
             inputId="modal-due-datetime"
             mode="datetime"
             format={DATETIME_FORMAT}
             formatType="standard"
             bind:value={dueDateTimeStr}
-            placeholder="DD-MM-YYYY HH:MM AM/PM"
+            placeholder={UI_COPY.modals.create.duePlaceholder}
             required
             i18n={PICKER_I18N}
             weekStart={1}
@@ -125,16 +150,30 @@
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn-icon-compact" on:click={closeCreateModal} aria-label="Cancel">
+        <button type="button" class="btn-icon-compact" on:click={closeCreateModal} aria-label={UI_COPY.modals.cancel}>
           <span class="btn-icon-compact__icon" aria-hidden="true">✕</span>
-          <span class="btn-icon-compact__label">Cancel</span>
+          <span class="btn-icon-compact__label">{UI_COPY.modals.cancel}</span>
         </button>
-        <button type="submit" class="btn-icon-compact" aria-label="Create task">
+        <button type="submit" class="btn-icon-compact" aria-label={UI_COPY.modals.create.saveCta}>
           <span class="btn-icon-compact__icon" aria-hidden="true">＋</span>
-          <span class="btn-icon-compact__label">Create task</span>
+          <span class="btn-icon-compact__label">{UI_COPY.modals.create.saveCta}</span>
         </button>
       </div>
     </form>
   </div>
 </div>
+
+<style>
+  .task-field-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .task-field-label-row label {
+    margin: 0;
+  }
+</style>
 

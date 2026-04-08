@@ -10,6 +10,7 @@ backend/api
 # Frontend dependencies and build outputs
 node_modules/
 dist/
+frontend/storybook-static/
 *.local
 playwright-report/
 test-results/

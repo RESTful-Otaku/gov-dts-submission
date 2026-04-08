@@ -18,3 +18,13 @@ export const KANBAN_COLUMNS: { status: TaskStatus; title: string }[] = [
 
 export const KANBAN_FLIP_MS = 150
 export const TOAST_EXIT_MS = 250
+
+/** Minimum viewport width for Users / Audit admin UI (not shown on native or narrower viewports). */
+export const ADMIN_UI_MIN_WIDTH_PX = 900
+
+/** `mailto:` for “contact administrator” links; override with `VITE_ADMIN_CONTACT_EMAIL`. */
+export function adminContactMailtoHref(): string {
+  const email = String(import.meta.env.VITE_ADMIN_CONTACT_EMAIL ?? 'admin@example.gov').trim() || 'admin@example.gov'
+  const subject = encodeURIComponent('Casework task manager — account help')
+  return `mailto:${email}?subject=${subject}`
+}

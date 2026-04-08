@@ -13,6 +13,55 @@
   gap: 0.55rem;
 }
 
+.task--skeleton {
+  pointer-events: none;
+  border-style: dashed;
+}
+
+.task-skeleton-line {
+  height: 0.72rem;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.14) 0%,
+    rgba(148, 163, 184, 0.28) 50%,
+    rgba(148, 163, 184, 0.14) 100%
+  );
+  background-size: 200% 100%;
+  animation: task-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.task-skeleton-line--title {
+  height: 1rem;
+  width: 70%;
+}
+
+.task-skeleton-line--short {
+  width: 55%;
+}
+
+.task-skeleton-line--meta {
+  width: 40%;
+}
+
+.cards-load-sentinel {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+@keyframes task-skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .task-header {
   display: flex;
   justify-content: space-between;

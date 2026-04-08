@@ -67,6 +67,9 @@ const meta = {
     priorityLabel: (p: any) => p,
     statusLabel: (s: any) => s,
     formatDate: (v: any) => v,
+    sortKey: 'due',
+    sortAscending: true,
+    onSortColumn: () => {},
   },
 } satisfies Meta<typeof TasksListView>
 

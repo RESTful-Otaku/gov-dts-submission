@@ -1,6 +1,7 @@
 <script lang="ts">
   import { cubicOut } from 'svelte/easing'
   import { slide } from 'svelte/transition'
+  import { UI_COPY } from '../../lib/app/copy'
   import type { TaskPriority, TaskStatus } from '../../lib/api'
   import {
     PRIORITY_OPTIONS as PRIORITY_OPTIONS_META,
@@ -27,13 +28,19 @@
   export let uniqueOwners: string[]
   export let allTags: string[]
   export let hasActiveFilters: boolean
+  export let savedViews: { id: string; name: string }[] = []
+  export let selectedSavedViewId = ''
 
   export let DATE_FORMAT: string
   export let PICKER_I18N: i18nType
 
   export let clearAllFilters: () => void
+  export let onSelectSavedView: (id: string) => void = () => {}
+  export let onSaveCurrentView: (name: string) => void = () => {}
+  export let onDeleteSavedView: (id: string) => void = () => {}
 
   let tagAddDraft = ''
+  let savedViewNameDraft = ''
 
   function tagAlreadySelected(name: string): boolean {
     const lower = name.toLowerCase()
@@ -54,20 +61,25 @@
     tagFilters = tagFilters.filter((t) => t !== tag)
   }
 
+  function handleSaveCurrentView(): void {
+    onSaveCurrentView(savedViewNameDraft)
+    savedViewNameDraft = ''
+  }
+
   $: statusOptions = [
-    { value: 'all', label: 'All statuses' },
+    { value: 'all', label: UI_COPY.tasks.filters.allStatuses },
     ...STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
   ]
   $: priorityOptions = [
-    { value: 'all', label: 'All priorities' },
+    { value: 'all', label: UI_COPY.tasks.filters.allPriorities },
     ...PRIORITY_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
   ]
   $: ownerOptions = [
-    { value: '', label: 'All owners' },
+    { value: '', label: UI_COPY.tasks.filters.allOwners },
     ...uniqueOwners.map((o) => ({ value: o, label: o })),
   ]
   $: tagAddOptions = [
-    { value: '', label: 'Add a tag…' },
+    { value: '', label: UI_COPY.tasks.filters.addTag },
     ...allTags.filter((t) => !tagAlreadySelected(t)).map((t) => ({ value: t, label: t })),
   ]
 </script>
@@ -76,31 +88,65 @@
   id="advanced-filters"
   class="filters-panel"
   role="region"
-  aria-label="Advanced filters and sorting"
+  aria-label={UI_COPY.tasks.filters.regionAria}
   transition:slide={{ duration: 220, easing: cubicOut, axis: 'y' }}
 >
   <div class="filter-controls">
+    <div class="saved-views-controls" role="group" aria-label={UI_COPY.tasks.filters.savedViewsAria}>
+      <label>
+        <span class="control-label">{UI_COPY.tasks.filters.savedViewsLabel}</span>
+        <select
+          value={selectedSavedViewId}
+          on:change={(e) => onSelectSavedView((e.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">{UI_COPY.tasks.filters.savedViewsPlaceholder}</option>
+          {#each savedViews as view}
+            <option value={view.id}>{view.name}</option>
+          {/each}
+        </select>
+      </label>
+      <label>
+        <span class="control-label">{UI_COPY.tasks.filters.saveCurrentView}</span>
+        <input
+          type="text"
+          bind:value={savedViewNameDraft}
+          placeholder={UI_COPY.tasks.filters.savedViewNamePlaceholder}
+        />
+      </label>
+      <button type="button" class="btn-icon-compact" on:click={handleSaveCurrentView}>
+        <span class="btn-icon-compact__label">{UI_COPY.tasks.filters.saveCurrentView}</span>
+      </button>
+      <button
+        type="button"
+        class="btn-icon-compact"
+        disabled={!selectedSavedViewId}
+        on:click={() => selectedSavedViewId && onDeleteSavedView(selectedSavedViewId)}
+      >
+        <span class="btn-icon-compact__label">{UI_COPY.tasks.filters.deleteSavedView}</span>
+      </button>
+    </div>
+
     <FilterLabeledSelect
-      label="Status"
-      ariaLabel="Filter by status"
+      label={UI_COPY.tasks.filters.statusLabel}
+      ariaLabel={UI_COPY.tasks.filters.statusAria}
       bind:value={statusFilter}
       options={statusOptions}
     />
     <FilterLabeledSelect
-      label="Priority"
-      ariaLabel="Filter by priority"
+      label={UI_COPY.tasks.filters.priorityLabel}
+      ariaLabel={UI_COPY.tasks.filters.priorityAria}
       bind:value={priorityFilter}
       options={priorityOptions}
     />
     <FilterLabeledSelect
-      label="Owner"
-      ariaLabel="Filter by owner"
+      label={UI_COPY.tasks.filters.ownerLabel}
+      ariaLabel={UI_COPY.tasks.filters.ownerAria}
       bind:value={ownerFilter}
       options={ownerOptions}
     />
     <FilterLabeledSelect
-      label="Tags"
-      ariaLabel="Add tag to filter"
+      label={UI_COPY.tasks.filters.tagsLabel}
+      ariaLabel={UI_COPY.tasks.filters.tagsAria}
       bind:value={tagAddDraft}
       options={tagAddOptions}
       onSelect={handleTagSelect}
@@ -111,7 +157,7 @@
         <div
           class="filter-applied-tags"
           role="group"
-          aria-label="Active tag filters. Remove a tag to stop filtering by it."
+          aria-label={UI_COPY.tasks.filters.activeTagsAria}
         >
           {#each tagFilters as tag (tag)}
             <span class="filter-tag-pill">
@@ -119,8 +165,8 @@
               <button
                 type="button"
                 class="filter-tag-pill-remove"
-                aria-label={`Remove tag filter ${tag}`}
-                title={`Remove “${tag}” from filters`}
+                aria-label={`${UI_COPY.tasks.filters.removeTagAriaPrefix}${tag}`}
+                title={`${UI_COPY.tasks.filters.removeTagTitlePrefix}${tag}${UI_COPY.tasks.filters.removeTagTitleSuffix}`}
                 on:click|preventDefault={() => removeTagFilter(tag)}
               >
                 ×

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -44,6 +45,25 @@ CREATE TABLE IF NOT EXISTS tasks (
 	due_at TIMESTAMP NOT NULL,
 	created_at TIMESTAMP NOT NULL,
 	updated_at TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+	id TEXT PRIMARY KEY,
+	email TEXT NOT NULL UNIQUE,
+	username TEXT NOT NULL UNIQUE,
+	first_name TEXT NOT NULL DEFAULT '',
+	last_name TEXT NOT NULL DEFAULT '',
+	password_hash TEXT NOT NULL,
+	role TEXT NOT NULL DEFAULT 'viewer',
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+	id TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL,
+	token_hash TEXT NOT NULL UNIQUE,
+	expires_at TIMESTAMP NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 `
 	_, err := db.ExecContext(ctx, q)
@@ -101,7 +121,7 @@ func (s *SQLiteStore) GetTask(ctx context.Context, id string) (*task.Task, error
 	}
 	tags, err := ParseTagsJSON(tagsRaw)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse tags for task %s: %w", t.ID, err)
 	}
 	t.Tags = tags
 	t.DueAt = t.DueAt.UTC()
@@ -113,15 +133,62 @@ func (s *SQLiteStore) GetTask(ctx context.Context, id string) (*task.Task, error
 func (s *SQLiteStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.Task, error) {
 	q := `
 		SELECT id, title, description, status, priority, owner, tags, due_at, created_at, updated_at
-		FROM tasks ORDER BY due_at ASC, id ASC
+		FROM tasks
 	`
+	conds := make([]string, 0, 5)
+	args := make([]any, 0, 8)
+	if opts.Status != "" {
+		conds = append(conds, "LOWER(status) = ?")
+		args = append(args, opts.Status)
+	}
+	if opts.Priority != "" {
+		conds = append(conds, "LOWER(priority) = ?")
+		args = append(args, opts.Priority)
+	}
+	if opts.Owner != "" {
+		conds = append(conds, "LOWER(owner) LIKE ?")
+		args = append(args, "%"+opts.Owner+"%")
+	}
+	if opts.Tag != "" {
+		conds = append(conds, "LOWER(tags) LIKE ?")
+		args = append(args, "%"+opts.Tag+"%")
+	}
+	if opts.Q != "" {
+		conds = append(conds, "LOWER(title || ' ' || COALESCE(description,'') || ' ' || status || ' ' || priority || ' ' || owner || ' ' || tags) LIKE ?")
+		args = append(args, "%"+opts.Q+"%")
+	}
+	if len(conds) > 0 {
+		q += " WHERE " + strings.Join(conds, " AND ")
+	}
+	switch opts.Sort {
+	case "title":
+		q += " ORDER BY LOWER(title)"
+	case "priority":
+		q += " ORDER BY CASE priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 2 END"
+	case "owner":
+		q += " ORDER BY LOWER(owner)"
+	case "status":
+		q += " ORDER BY CASE LOWER(status) WHEN 'todo' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'done' THEN 3 ELSE 4 END"
+	case "tags":
+		q += " ORDER BY LOWER(tags)"
+	case "created":
+		q += " ORDER BY created_at"
+	default:
+		q += " ORDER BY due_at"
+	}
+	if opts.Order == "desc" {
+		q += " DESC, id DESC"
+	} else {
+		q += " ASC, id ASC"
+	}
 	var rows *sql.Rows
 	var err error
 	if opts.Limit > 0 {
 		q += " LIMIT ? OFFSET ?"
-		rows, err = s.db.QueryContext(ctx, q, opts.Limit, max(0, opts.Offset))
+		args = append(args, opts.Limit, max(0, opts.Offset))
+		rows, err = s.db.QueryContext(ctx, q, args...)
 	} else {
-		rows, err = s.db.QueryContext(ctx, q)
+		rows, err = s.db.QueryContext(ctx, q, args...)
 	}
 	if err != nil {
 		return nil, err
@@ -140,7 +207,7 @@ func (s *SQLiteStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.
 		}
 		tags, err := ParseTagsJSON(tagsRaw)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse tags for task %s: %w", t.ID, err)
 		}
 		t.Tags = tags
 		t.DueAt = t.DueAt.UTC()
@@ -155,13 +222,21 @@ func (s *SQLiteStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.
 }
 
 func (s *SQLiteStore) UpdateTaskStatus(ctx context.Context, id string, status task.Status) (*task.Task, error) {
+	current, err := s.GetTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?`, status, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND updated_at = ?`, status, now, id, current.UpdatedAt.UTC())
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }
@@ -198,14 +273,18 @@ func (s *SQLiteStore) UpdateTask(ctx context.Context, id string, in *task.Update
 	if err != nil {
 		return nil, err
 	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, tags = ?, updated_at = ? WHERE id = ?`,
-		title, desc, status, priority, tagsJSON, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, tags = ?, updated_at = ? WHERE id = ? AND updated_at = ?`,
+		title, desc, status, priority, tagsJSON, now, id, current.UpdatedAt.UTC())
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }

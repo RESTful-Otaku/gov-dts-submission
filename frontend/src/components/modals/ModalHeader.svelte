@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   export let titleId: string
   export let title: string
   export let onClose: () => void
@@ -8,6 +9,6 @@
 <div class="modal-header">
   <h2 id={titleId}>{title}</h2>
   {#if showClose}
-    <button type="button" class="modal-close" aria-label="Close" on:click={onClose}>×</button>
+    <button type="button" class="modal-close" aria-label={UI_COPY.common.close} on:click={onClose}>×</button>
   {/if}
 </div>

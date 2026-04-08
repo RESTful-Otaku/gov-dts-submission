@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '../../src/lib/api'
 import { dueState } from '../../src/lib/tasks/dueState'
@@ -19,6 +19,10 @@ function makeTask(partial: Partial<Task>): Task {
 }
 
 describe('dueState', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('classifies overdue / due-today / due-soon correctly relative to now', () => {
     vi.useFakeTimers()
     const now = new Date(2026, 2, 26, 10, 0, 0, 0) // 26-03-2026 10:00
@@ -45,7 +49,6 @@ describe('dueState', () => {
     })
     expect(dueState(afterWeek)).toBe('')
 
-    vi.useRealTimers()
   })
 
   it('returns empty string for invalid dueAt', () => {

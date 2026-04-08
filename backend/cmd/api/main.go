@@ -35,6 +35,9 @@ func main() {
 	defer db.Close()
 
 	apiServer := httpapi.NewServerWithDriver(db, cfg.DBDriver)
+	if err := apiServer.BootstrapSQLAuthArtifacts(ctx); err != nil {
+		log.Fatalf("bootstrap auth schema: %v", err)
+	}
 	mux := http.NewServeMux()
 	apiServer.RegisterRoutes(mux)
 

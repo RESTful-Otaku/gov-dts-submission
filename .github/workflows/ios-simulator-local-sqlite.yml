@@ -30,9 +30,24 @@ jobs:
           bun run check
           bun run test
 
+      - name: Configure Vite env for native mobile SQLite (SQLCipher)
+        shell: bash
+        env:
+          REPO_SECRET: ${{ secrets.VITE_MOBILE_DB_SECRET }}
+        run: |
+          set -euo pipefail
+          default="gov-dts-mobile-sqlcipher-local-dev-not-for-store"
+          echo "VITE_MOBILE_LOCAL_DB=true" >> "$GITHUB_ENV"
+          if [[ -n "${REPO_SECRET}" ]]; then
+            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${REPO_SECRET}" >> "$GITHUB_ENV"
+          else
+            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${default}" >> "$GITHUB_ENV"
+            echo "::notice::Repository secret VITE_MOBILE_DB_SECRET is not set; using the public dev placeholder. Set the secret for a production-grade SQLCipher key."
+          fi
+
       - name: Build web assets (on-device SQLite)
         working-directory: frontend
-        run: VITE_MOBILE_LOCAL_DB=true bun run build
+        run: bun run build
 
       - name: Capacitor sync iOS
         working-directory: frontend

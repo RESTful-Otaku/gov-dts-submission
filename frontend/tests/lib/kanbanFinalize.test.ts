@@ -56,4 +56,20 @@ describe('finalizeKanbanColumnDrop', () => {
     expect(updateTaskStatus).toHaveBeenCalledWith('1', { status: 'done' })
     expect(showToast).toHaveBeenCalledWith('Status updated.', 'notification')
   })
+
+  it('throws when finalize payload includes multiple status mutations', async () => {
+    const initial = [t('1', 'todo'), t('2', 'in_progress')]
+    const showToast = vi.fn()
+    const updateTaskStatus = vi.fn().mockResolvedValue(t('1', 'done'))
+    await expect(
+      finalizeKanbanColumnDrop({
+        status: 'done',
+        items: [t('1', 'todo'), t('2', 'in_progress')],
+        tasks: initial,
+        setTasks: vi.fn(),
+        updateTaskStatus,
+        showToast,
+      }),
+    ).rejects.toThrow('at most one status mutation')
+  })
 })

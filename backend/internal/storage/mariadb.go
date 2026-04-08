@@ -46,6 +46,26 @@ CREATE TABLE IF NOT EXISTS tasks (
 	created_at DATETIME(6) NOT NULL,
 	updated_at DATETIME(6) NOT NULL
 ) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS users (
+	id CHAR(36) NOT NULL PRIMARY KEY,
+	email VARCHAR(255) NOT NULL UNIQUE,
+	username VARCHAR(255) NOT NULL UNIQUE,
+	first_name VARCHAR(255) NOT NULL DEFAULT '',
+	last_name VARCHAR(255) NOT NULL DEFAULT '',
+	password_hash TEXT NOT NULL,
+	role VARCHAR(16) NOT NULL DEFAULT 'viewer',
+	created_at DATETIME(6) NOT NULL,
+	updated_at DATETIME(6) NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS sessions (
+	id CHAR(36) NOT NULL PRIMARY KEY,
+	user_id CHAR(36) NOT NULL,
+	token_hash TEXT NOT NULL,
+	expires_at DATETIME(6) NOT NULL,
+	created_at DATETIME(6) NOT NULL,
+	UNIQUE KEY uniq_sessions_token_hash (token_hash(191)),
+	CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 `
 	_, err := db.ExecContext(ctx, q)
 	return err
@@ -114,15 +134,62 @@ func (s *MariaDBStore) GetTask(ctx context.Context, id string) (*task.Task, erro
 func (s *MariaDBStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.Task, error) {
 	q := `
 		SELECT id, title, description, status, priority, owner, tags, due_at, created_at, updated_at
-		FROM tasks ORDER BY due_at ASC, id ASC
+		FROM tasks
 	`
+	conds := make([]string, 0, 5)
+	args := make([]any, 0, 8)
+	if opts.Status != "" {
+		conds = append(conds, "LOWER(status) = ?")
+		args = append(args, opts.Status)
+	}
+	if opts.Priority != "" {
+		conds = append(conds, "LOWER(priority) = ?")
+		args = append(args, opts.Priority)
+	}
+	if opts.Owner != "" {
+		conds = append(conds, "LOWER(owner) LIKE ?")
+		args = append(args, "%"+opts.Owner+"%")
+	}
+	if opts.Tag != "" {
+		conds = append(conds, "LOWER(tags) LIKE ?")
+		args = append(args, "%"+opts.Tag+"%")
+	}
+	if opts.Q != "" {
+		conds = append(conds, "LOWER(CONCAT(title, ' ', COALESCE(description,''), ' ', status, ' ', priority, ' ', owner, ' ', tags)) LIKE ?")
+		args = append(args, "%"+opts.Q+"%")
+	}
+	if len(conds) > 0 {
+		q += " WHERE " + strings.Join(conds, " AND ")
+	}
+	switch opts.Sort {
+	case "title":
+		q += " ORDER BY LOWER(title)"
+	case "priority":
+		q += " ORDER BY CASE priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 2 END"
+	case "owner":
+		q += " ORDER BY LOWER(owner)"
+	case "status":
+		q += " ORDER BY CASE LOWER(status) WHEN 'todo' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'done' THEN 3 ELSE 4 END"
+	case "tags":
+		q += " ORDER BY LOWER(tags)"
+	case "created":
+		q += " ORDER BY created_at"
+	default:
+		q += " ORDER BY due_at"
+	}
+	if opts.Order == "desc" {
+		q += " DESC, id DESC"
+	} else {
+		q += " ASC, id ASC"
+	}
 	var rows *sql.Rows
 	var err error
 	if opts.Limit > 0 {
 		q += " LIMIT ? OFFSET ?"
-		rows, err = s.db.QueryContext(ctx, q, opts.Limit, max(0, opts.Offset))
+		args = append(args, opts.Limit, max(0, opts.Offset))
+		rows, err = s.db.QueryContext(ctx, q, args...)
 	} else {
-		rows, err = s.db.QueryContext(ctx, q)
+		rows, err = s.db.QueryContext(ctx, q, args...)
 	}
 	if err != nil {
 		return nil, err
@@ -156,13 +223,21 @@ func (s *MariaDBStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task
 }
 
 func (s *MariaDBStore) UpdateTaskStatus(ctx context.Context, id string, status task.Status) (*task.Task, error) {
+	current, err := s.GetTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?`, status, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND updated_at = ?`, status, now, id, current.UpdatedAt.UTC())
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }
@@ -199,14 +274,18 @@ func (s *MariaDBStore) UpdateTask(ctx context.Context, id string, in *task.Updat
 	if err != nil {
 		return nil, err
 	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, tags = ?, updated_at = ? WHERE id = ?`,
-		title, desc, status, priority, tagsJSON, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, tags = ?, updated_at = ? WHERE id = ? AND updated_at = ?`,
+		title, desc, status, priority, tagsJSON, now, id, current.UpdatedAt.UTC())
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }

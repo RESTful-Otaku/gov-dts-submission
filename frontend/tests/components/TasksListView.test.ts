@@ -30,6 +30,7 @@ describe('TasksListView', () => {
     const openEditModal = vi.fn()
     const handleDeleteTask = vi.fn()
     const filterByTag = vi.fn()
+    const onSortColumn = vi.fn()
 
     const tasks: Task[] = [
       {
@@ -80,6 +81,9 @@ describe('TasksListView', () => {
         priorityLabel: (p) => p,
         statusLabel: (s) => s,
         formatDate: (v) => v,
+        sortKey: 'due' as const,
+        sortAscending: true,
+        onSortColumn,
       },
     })
 
@@ -99,6 +103,9 @@ describe('TasksListView', () => {
 
     await user.click(getByText('evidence'))
     expect(filterByTag).toHaveBeenCalledWith('evidence')
+
+    await user.click(getByRole('button', { name: /Title/ }))
+    expect(onSortColumn).toHaveBeenCalledWith('title')
   })
 })
 

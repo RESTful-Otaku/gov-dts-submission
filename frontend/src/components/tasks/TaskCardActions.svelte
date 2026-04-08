@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   /** When true, click handlers use `stopPropagation` (e.g. Kanban cards on a draggable surface). */
   export let stopPropagation = false
   export let onEdit: () => void
@@ -15,11 +16,11 @@
       class="btn-icon-compact"
       data-tour={tourSpotlight === 'edit' ? 'tour-spot-edit' : undefined}
       on:click|stopPropagation={() => onEdit()}
-      title="Edit task"
-      aria-label="Edit"
+      title={UI_COPY.common.editTask}
+      aria-label={UI_COPY.common.edit}
     >
       <span class="btn-icon-compact__icon" aria-hidden="true">✎</span>
-      <span class="btn-icon-compact__label">Edit</span>
+      <span class="btn-icon-compact__label">{UI_COPY.common.edit}</span>
     </button>
     <button
       type="button"
@@ -27,10 +28,10 @@
       data-tour={tourSpotlight === 'delete' ? 'tour-spot-delete' : undefined}
       on:click|stopPropagation={() => onDelete()}
       title={deleteTitle}
-      aria-label="Delete"
+      aria-label={UI_COPY.common.delete}
     >
       <span class="btn-icon-compact__icon" aria-hidden="true">🗑</span>
-      <span class="btn-icon-compact__label">Delete</span>
+      <span class="btn-icon-compact__label">{UI_COPY.common.delete}</span>
     </button>
   {:else}
     <button
@@ -38,11 +39,11 @@
       class="btn-icon-compact"
       data-tour={tourSpotlight === 'edit' ? 'tour-spot-edit' : undefined}
       on:click={onEdit}
-      title="Edit task"
-      aria-label="Edit"
+      title={UI_COPY.common.editTask}
+      aria-label={UI_COPY.common.edit}
     >
       <span class="btn-icon-compact__icon" aria-hidden="true">✎</span>
-      <span class="btn-icon-compact__label">Edit</span>
+      <span class="btn-icon-compact__label">{UI_COPY.common.edit}</span>
     </button>
     <button
       type="button"
@@ -50,10 +51,10 @@
       data-tour={tourSpotlight === 'delete' ? 'tour-spot-delete' : undefined}
       on:click={onDelete}
       title={deleteTitle}
-      aria-label="Delete"
+      aria-label={UI_COPY.common.delete}
     >
       <span class="btn-icon-compact__icon" aria-hidden="true">🗑</span>
-      <span class="btn-icon-compact__label">Delete</span>
+      <span class="btn-icon-compact__label">{UI_COPY.common.delete}</span>
     </button>
   {/if}
 </div>

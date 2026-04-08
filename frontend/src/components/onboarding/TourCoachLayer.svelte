@@ -2,11 +2,14 @@
   import { onDestroy, tick } from 'svelte'
   import { fly } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
-  import type { OnboardingStepId } from '../../lib/app/onboarding/types'
+  import type { HelpTabId, OnboardingStepId } from '../../lib/app/onboarding/types'
   import type { TourStepDef } from '../../lib/app/onboarding/types'
   import { getSafeAreaInsetsPx } from '../../lib/dom/safeAreaInsets'
 
   export let isNarrow: boolean
+  /** Remeasure when Help opens or the active tab changes (settings targets mount after the tour step). */
+  export let helpModalOpen = false
+  export let helpActiveTab: HelpTabId = 'profile'
   /** When this toggles (e.g. mobile toolbar collapse), spotlight geometry must update. */
   export let mobileSearchExpanded = false
   export let tourStepIndex: number
@@ -22,6 +25,38 @@
 
   const PAD = 10
   const COLLAPSE_MS = 3200
+  /** Narrow + interactive: shrink sooner so the coach sheet does not sit over the control for long. */
+  const COLLAPSE_MS_NARROW_INTERACTIVE = 1500
+
+  function useCenterScroll(attr: string | null): boolean {
+    return attr != null && (attr === 'filter-sort' || attr.startsWith('help-settings'))
+  }
+
+  /** Prefer a visible, hit-testable node (skips mobile filter row while search is expanded). */
+  function pickTourTargetElement(safe: string, attr: string | null): HTMLElement | null {
+    const nodes = document.querySelectorAll(`[data-tour="${safe}"]`)
+    const relaxOpacity = attr?.startsWith('help-settings') ?? false
+    let first: HTMLElement | null = null
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]
+      if (!(n instanceof HTMLElement)) continue
+      if (!first) first = n
+      const st = getComputedStyle(n)
+      if (st.display === 'none') continue
+      if (st.visibility === 'hidden') continue
+      if (!relaxOpacity && Number.parseFloat(st.opacity) < 0.02) continue
+      const r = n.getBoundingClientRect()
+      if (r.width < 2 || r.height < 2) continue
+      return n
+    }
+    return relaxOpacity ? first : null
+  }
+
+  let helpRemeasureTimers: ReturnType<typeof setTimeout>[] = []
+  function clearHelpRemeasureTimers(): void {
+    for (const t of helpRemeasureTimers) clearTimeout(t)
+    helpRemeasureTimers = []
+  }
 
   let useSpotlight = false
   let mobilePlacement: 'top' | 'bottom' = 'bottom'
@@ -56,6 +91,9 @@
     isNarrow
     step?.id
     mobileSearchExpanded
+    helpModalOpen
+    helpActiveTab
+    clearHelpRemeasureTimers()
     tick().then(() => runMeasure(true))
   }
 
@@ -63,6 +101,7 @@
     tourStepIndex
     step?.id
     step?.interactive
+    isNarrow
     checklist
     if (collapseTimer) {
       clearTimeout(collapseTimer)
@@ -71,10 +110,11 @@
     coachCollapsed = false
     const s = tourSteps[tourStepIndex]
     if (s?.interactive && !stepSatisfied(s)) {
+      const ms = isNarrow ? COLLAPSE_MS_NARROW_INTERACTIVE : COLLAPSE_MS
       collapseTimer = setTimeout(() => {
         coachCollapsed = true
         collapseTimer = null
-      }, COLLAPSE_MS)
+      }, ms)
     }
   }
 
@@ -91,7 +131,7 @@
   }
 
   /** `scrollIntoView` only when the step/layout changes — not on window scroll/resize (avoids fighting the user). */
-  function runMeasure(scrollTarget: boolean): void {
+  function runMeasure(scrollTarget: boolean, fromDeferredRemeasure = false): void {
     clearSpotlightClass()
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -103,16 +143,32 @@
     }
 
     const safe = targetAttr.replace(/["\\]/g, '')
-    const el = document.querySelector(`[data-tour="${safe}"]`)
-    if (!el || !(el instanceof HTMLElement)) {
+
+    if (targetAttr === 'filter' && isNarrow && mobileSearchExpanded && !fromDeferredRemeasure) {
+      helpRemeasureTimers.push(
+        window.setTimeout(() => runMeasure(scrollTarget, true), 0),
+        window.setTimeout(() => runMeasure(scrollTarget, true), 48),
+      )
+      useSpotlight = false
+      mobilePlacement = 'bottom'
+      return
+    }
+
+    const el = pickTourTargetElement(safe, targetAttr)
+    if (!el) {
+      if (targetAttr.startsWith('help-settings') && !fromDeferredRemeasure) {
+        for (const delay of [40, 120, 260, 420]) {
+          helpRemeasureTimers.push(window.setTimeout(() => runMeasure(true, true), delay))
+        }
+      }
       useSpotlight = false
       mobilePlacement = 'bottom'
       return
     }
 
     const applyGeometry = (): void => {
-      const el2 = document.querySelector(`[data-tour="${safe}"]`)
-      if (!el2 || !(el2 instanceof HTMLElement)) {
+      const el2 = pickTourTargetElement(safe, targetAttr)
+      if (!el2) {
         useSpotlight = false
         mobilePlacement = 'bottom'
         return
@@ -139,8 +195,20 @@
       bottomH = Math.max(0, vh - holeTop - holeH)
 
       const cy = holeTop + holeH / 2
+      const holeBottom = holeTop + holeH
+      const { top: insetTop } = getSafeAreaInsetsPx()
+      const bottomReserve = Math.min(vh * 0.42, 300)
+      const topReserve = Math.min(vh * 0.24, 160) + insetTop
       if (isNarrow) {
-        mobilePlacement = cy > vh * 0.52 ? 'top' : 'bottom'
+        let placeBottom = cy <= vh * 0.5
+        const interactiveOpen = !!step?.interactive && !stepSatisfied(step)
+        if (interactiveOpen) {
+          if (placeBottom && holeBottom > vh - bottomReserve) placeBottom = false
+          if (!placeBottom && holeTop < topReserve) placeBottom = true
+        } else {
+          placeBottom = cy <= vh * 0.52
+        }
+        mobilePlacement = placeBottom ? 'bottom' : 'top'
         nudgeDir = mobilePlacement === 'top' ? 'down' : 'up'
       } else {
         nudgeDir = cy < vh * 0.45 ? 'down' : 'up'
@@ -152,11 +220,17 @@
     }
 
     if (scrollTarget) {
-      const block =
-        targetAttr === 'help-settings' || targetAttr === 'filter-sort' ? 'center' : 'nearest'
+      const block = useCenterScroll(targetAttr) ? 'center' : 'nearest'
       el.scrollIntoView({ block, inline: 'nearest', behavior: 'auto' })
+      const tripleSettle = useCenterScroll(targetAttr) || targetAttr === 'filter'
       requestAnimationFrame(() => {
-        requestAnimationFrame(applyGeometry)
+        if (tripleSettle) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(applyGeometry)
+          })
+        } else {
+          requestAnimationFrame(applyGeometry)
+        }
       })
     } else {
       applyGeometry()
@@ -197,6 +271,7 @@
 
   onDestroy(() => {
     if (collapseTimer) clearTimeout(collapseTimer)
+    clearHelpRemeasureTimers()
     clearSpotlightClass()
   })
 </script>
@@ -282,6 +357,7 @@
           class="tour-coach-panel"
           class:tour-coach-panel--mobile={isNarrow}
           class:tour-coach-panel--mobile-top={isNarrow && mobilePlacement === 'top'}
+          class:tour-coach-panel--interactive-mobile={isNarrow && !!step?.interactive && !coachCollapsed}
           style={isNarrow ? '' : `top:${coachTop}px;left:${coachLeft}px;width:${coachWidth}px`}
           role="dialog"
           aria-modal="true"

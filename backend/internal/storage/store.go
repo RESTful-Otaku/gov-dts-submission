@@ -7,12 +7,42 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/j-m-harrison/dts-submission/internal/task"
 )
 
 // ErrNotFound is returned when a task is not found.
 var ErrNotFound = errors.New("task not found")
+
+// ErrConflict is returned when an update cannot be applied because the record
+// changed between read and write (optimistic concurrency conflict).
+var ErrConflict = errors.New("task update conflict")
+
+var (
+	beforeConditionalUpdateHookMu sync.Mutex
+	beforeConditionalUpdateHook   func()
+)
+
+func runBeforeConditionalUpdateHook() {
+	beforeConditionalUpdateHookMu.Lock()
+	hook := beforeConditionalUpdateHook
+	beforeConditionalUpdateHookMu.Unlock()
+	if hook != nil {
+		hook()
+	}
+}
+
+func setBeforeConditionalUpdateHookForTest(hook func()) func() {
+	beforeConditionalUpdateHookMu.Lock()
+	beforeConditionalUpdateHook = hook
+	beforeConditionalUpdateHookMu.Unlock()
+	return func() {
+		beforeConditionalUpdateHookMu.Lock()
+		beforeConditionalUpdateHook = nil
+		beforeConditionalUpdateHookMu.Unlock()
+	}
+}
 
 // Store defines the persistence port for tasks. It is intentionally small so
 // that different database backends (SQLite, Postgres, MariaDB, etc.) can
@@ -30,6 +60,13 @@ type Store interface {
 type ListOptions struct {
 	Limit  int
 	Offset int
+	Q      string
+	Status string
+	Priority string
+	Owner  string
+	Tag    string
+	Sort   string
+	Order  string
 }
 
 // NewStoreFromDBDriver returns the Store implementation for the given *sql.DB

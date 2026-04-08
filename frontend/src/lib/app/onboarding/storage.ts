@@ -1,5 +1,6 @@
+import type { UserRole } from '../../api'
 import type { OnboardingStepId } from './types'
-import { CHECKLIST_STEP_IDS, checklistIdsForLayout } from './definitions'
+import { CHECKLIST_STEP_IDS, checklistIdsForRoleAndLayout } from './definitions'
 
 const STORAGE_VERSION = '1'
 const KEY_AUTO_DISMISS = 'task-app-onboarding-auto-dismiss-v' + STORAGE_VERSION
@@ -70,8 +71,9 @@ export function resetOnboardingStorage(): void {
 export function checklistProgress(
   checklist: Record<OnboardingStepId, boolean>,
   isNarrow: boolean,
+  role: UserRole | null = null,
 ): { done: number; total: number } {
-  const ids = checklistIdsForLayout(isNarrow)
+  const ids = checklistIdsForRoleAndLayout(isNarrow, role)
   let done = 0
   for (const id of ids) {
     if (checklist[id]) done++

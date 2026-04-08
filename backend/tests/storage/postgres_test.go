@@ -36,6 +36,9 @@ func newTestPostgresDB(t *testing.T) *sql.DB {
 
 func TestPostgresStore_CRUD(t *testing.T) {
 	db := newTestPostgresDB(t)
+	if _, err := db.Exec(`TRUNCATE TABLE tasks`); err != nil {
+		t.Fatalf("truncate tasks: %v", err)
+	}
 	store := storage.NewPostgresStore(db)
 	ctx := context.Background()
 
@@ -64,8 +67,8 @@ func TestPostgresStore_CRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
-	if len(all) == 0 {
-		t.Fatal("expected at least one task in list")
+	if len(all) != 1 {
+		t.Fatalf("expected exactly one task in list, got %d", len(all))
 	}
 
 	updated, err := store.UpdateTaskStatus(ctx, created.ID, task.StatusInProgress)

@@ -62,5 +62,44 @@ describe('getSortedTasks', () => {
     const asc = getSortedTasks(tasks, 'due', true)
     expect(asc.map((t) => t.id)).toEqual(['earlier', 'later'])
   })
+
+  it('sorts by owner case-insensitively', () => {
+    const tasks: Task[] = [
+      makeTask({ id: 'b', title: 't', owner: 'beta' }),
+      makeTask({ id: 'a', title: 't', owner: 'Alpha' }),
+    ]
+    const asc = getSortedTasks(tasks, 'owner', true)
+    expect(asc.map((t) => t.id)).toEqual(['a', 'b'])
+  })
+
+  it('sorts by workflow status order', () => {
+    const tasks: Task[] = [
+      makeTask({ id: 'd', title: 't', status: 'done' }),
+      makeTask({ id: 't', title: 't', status: 'todo' }),
+      makeTask({ id: 'p', title: 't', status: 'in_progress' }),
+    ]
+    const asc = getSortedTasks(tasks, 'status', true)
+    expect(asc.map((t) => t.id)).toEqual(['t', 'p', 'd'])
+  })
+
+  it('sorts by normalized tags string', () => {
+    const tasks: Task[] = [
+      makeTask({ id: 'b', title: 't', tags: ['zebra'] }),
+      makeTask({ id: 'a', title: 't', tags: ['apple'] }),
+    ]
+    const asc = getSortedTasks(tasks, 'tags', true)
+    expect(asc.map((t) => t.id)).toEqual(['a', 'b'])
+  })
+
+  it('sorts by createdAt', () => {
+    const early = new Date(2026, 0, 1).toISOString()
+    const late = new Date(2026, 0, 5).toISOString()
+    const tasks: Task[] = [
+      makeTask({ id: 'late', title: 't', createdAt: late }),
+      makeTask({ id: 'early', title: 't', createdAt: early }),
+    ]
+    const asc = getSortedTasks(tasks, 'created', true)
+    expect(asc.map((t) => t.id)).toEqual(['early', 'late'])
+  })
 })
 

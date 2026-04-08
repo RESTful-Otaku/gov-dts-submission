@@ -1,7 +1,7 @@
 import type { Task } from '../api'
 import type { ListPageSize } from '../app/constants'
 import type { PriorityFilter, SortKey, StatusFilter, ViewMode } from '../app/types'
-import { matchesFilters } from './filter'
+import { createTaskFilterPredicate } from './filter'
 import { getSortedTasks } from './sort'
 
 /** Filtered + sorted tasks for the current UI state. */
@@ -17,19 +17,17 @@ export function buildVisibleTasks(
   sortKey: SortKey,
   sortAscending: boolean,
 ): Task[] {
+  const predicate = createTaskFilterPredicate({
+    qRaw: debouncedSearchTerm,
+    status: statusFilter,
+    priority: priorityFilter,
+    ownerQ: ownerFilter,
+    tagFilters,
+    from: filterFrom,
+    to: filterTo,
+  })
   return getSortedTasks(
-    tasks.filter((t) =>
-      matchesFilters(
-        t,
-        debouncedSearchTerm,
-        statusFilter,
-        priorityFilter,
-        ownerFilter,
-        tagFilters,
-        filterFrom,
-        filterTo,
-      ),
-    ),
+    tasks.filter((t) => predicate(t)),
     sortKey,
     sortAscending,
   )

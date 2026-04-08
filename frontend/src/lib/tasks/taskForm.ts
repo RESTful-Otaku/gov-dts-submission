@@ -1,3 +1,5 @@
+import { UI_MESSAGES } from '../app/messages'
+
 /** Split comma/semicolon-separated tags from modal inputs. */
 export function parseTagsInput(tagsInput: string): string[] {
   return tagsInput
@@ -20,10 +22,10 @@ export function validateCreateTaskForm(
   dueDateTimeStr: string,
   parseDateTimeUK: (s: string) => string | null,
 ): string | null {
-  if (!title.trim()) return 'Title is required'
-  if (!dueDateTimeStr?.trim()) return 'Due date and time are required'
+  if (!title.trim()) return UI_MESSAGES.taskFormTitleRequired
+  if (!dueDateTimeStr?.trim()) return UI_MESSAGES.taskFormDueRequired
   const iso = dueAtIsoFromPicker(dueDateTimeStr, parseDateTimeUK)
-  if (!iso) return 'Due date/time is invalid (use DD-MM-YYYY and 12-hour time)'
-  if (new Date(iso).getTime() < Date.now()) return 'Due date/time must be in the future'
+  if (!iso) return UI_MESSAGES.taskFormDueInvalid
+  if (new Date(iso).getTime() < Date.now()) return UI_MESSAGES.taskFormDueFuture
   return null
 }

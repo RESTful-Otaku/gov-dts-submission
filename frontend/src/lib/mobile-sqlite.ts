@@ -1,76 +1,66 @@
+/**
+ * Native Capacitor store: demo users + tasks on device (dev/staging APK/IPA) so the app runs without a remote API.
+ * Passwords for seeded rows use {@link DEMO_SEED_DEMO_PASSWORD}; new registrations use Argon2id (same params as the API).
+ */
 import { Capacitor } from '@capacitor/core'
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite'
 import type {
+  AuthPayload,
+  AuthUser,
   CreateTaskPayload,
+  RecoverPasswordPayload,
+  RecoverPasswordResponse,
   Task,
   TaskPriority,
   TaskStatus,
   UpdateStatusPayload,
   UpdateTaskPayload,
 } from './api'
+import { buildDemoTaskTemplates, DEMO_SEED_PASSWORD_HASH, DEMO_SEED_USERS } from './demo-seed-data'
+import { hashPasswordArgon2id, verifyPasswordArgon2id } from './local-auth-password'
 
 const DB_NAME = 'taskmanager'
 const DB_VERSION = 1
-const ENCRYPTION_MODE = 'no-encryption'
-/** Arg 2 of createConnection: use SQLCipher (must stay false when ENCRYPTION_MODE is no-encryption). */
-const USE_SQLCIPHER_ENCRYPTION = false
+const ENCRYPTION_MODE = 'encryption'
+/** Arg 2 of createConnection: use SQLCipher encryption. */
+const USE_SQLCIPHER_ENCRYPTION = true
 /** Arg 5 of createConnection / isConnection / retrieveConnection: false = read-write. */
 const CONNECTION_READONLY = false
 
 let dbPromise: Promise<SQLiteDBConnection> | null = null
 
-type SeedTemplate = {
-  title: string
-  description: string
-  status: TaskStatus
-  priority: TaskPriority
-  owner: string
-  tags: string[]
-  dueDays: number
+function getMobileDbSecret(): string {
+  const raw = String(import.meta.env.VITE_MOBILE_DB_SECRET ?? '').trim()
+  if (!raw) {
+    throw new Error(
+      'VITE_MOBILE_DB_SECRET is required when native mobile SQLite is enabled (VITE_MOBILE_LOCAL_DB). ' +
+        'Set a strong passphrase at build time, or export env before `bun run build`: ' +
+        'see scripts/lib.sh `gov_dts_export_vite_mobile_local_db_env` and GitHub secret VITE_MOBILE_DB_SECRET for releases.',
+    )
+  }
+  return raw
 }
 
-const DEMO_TEMPLATES: SeedTemplate[] = [
-  { title: 'Review case bundle', description: 'Check evidence and witness statements before the hearing.', status: 'todo', priority: 'high', owner: 'Sarah Chen', tags: ['evidence', 'bundle', 'hearing'], dueDays: 0 },
-  { title: 'Prepare hearing notes', description: 'Summarise key points and authorities for the judge.', status: 'in_progress', priority: 'normal', owner: 'James Wilson', tags: ['hearing', 'judge', 'notes'], dueDays: 1 },
-  { title: 'Chase respondent response', description: "Email respondent's solicitor for outstanding response.", status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['correspondence', 'respondent', 'deadline'], dueDays: 2 },
-  { title: 'Draft order', description: 'Prepare draft order for judge approval.', status: 'in_progress', priority: 'high', owner: 'James Wilson', tags: ['draft', 'order', 'judge'], dueDays: 3 },
-  { title: 'Update case management system', description: 'Enter latest hearing outcome and next steps.', status: 'done', priority: 'low', owner: 'Priya Patel', tags: ['cms', 'admin', 'data-entry'], dueDays: 0 },
-  { title: 'Schedule case conference', description: 'Arrange case conference and send invites.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['conference', 'listing', 'diary'], dueDays: 5 },
-  { title: 'Review safeguarding concerns', description: 'Review safeguarding notes and escalate if needed.', status: 'in_progress', priority: 'urgent', owner: 'James Wilson', tags: ['safeguarding', 'compliance', 'escalation'], dueDays: 1 },
-  { title: 'Send directions to parties', description: 'Issue standard directions and file copy.', status: 'todo', priority: 'normal', owner: 'Priya Patel', tags: ['directions', 'correspondence', 'filing'], dueDays: 4 },
-  { title: 'Prepare summary for judge', description: 'Create one-page case summary for pre-reading.', status: 'todo', priority: 'high', owner: 'Sarah Chen', tags: ['summary', 'hearing', 'pre-reading'], dueDays: 6 },
-  { title: 'Check compliance with previous order', description: 'Confirm parties have complied with directions.', status: 'in_progress', priority: 'normal', owner: 'Priya Patel', tags: ['compliance', 'directions', 'follow-up'], dueDays: 7 },
-  { title: 'File correspondence', description: 'File recent correspondence to digital case file.', status: 'done', priority: 'low', owner: 'James Wilson', tags: ['filing', 'admin', 'correspondence'], dueDays: 8 },
-  { title: 'List case for review', description: 'Ensure 4-week review is listed and parties notified.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['listing', 'review', 'diary'], dueDays: 10 },
-  { title: 'Confirm interpreter booking', description: 'Check interpreter confirmed and parties informed.', status: 'todo', priority: 'high', owner: 'James Wilson', tags: ['interpreter', 'hearing', 'accessibility'], dueDays: 9 },
-  { title: 'Update hearing bundle index', description: 'Update index after new documents received.', status: 'in_progress', priority: 'normal', owner: 'Priya Patel', tags: ['bundle', 'hearing', 'index'], dueDays: 12 },
-  { title: 'Arrange remote hearing link', description: 'Send video link and joining instructions to parties.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['remote', 'hearing', 'video'], dueDays: 11 },
-  { title: 'Chase expert report', description: 'Follow up with expert for draft report.', status: 'in_progress', priority: 'normal', owner: 'James Wilson', tags: ['expert', 'evidence', 'report'], dueDays: 14 },
-  { title: 'Record adjournment reasons', description: 'Enter adjournment reasons into case system.', status: 'done', priority: 'low', owner: 'Priya Patel', tags: ['admin', 'hearing', 'adjournment'], dueDays: 8 },
-  { title: 'Close legacy paper file', description: 'Confirm closed and archived; update records.', status: 'done', priority: 'low', owner: 'Sarah Chen', tags: ['archive', 'admin', 'closure'], dueDays: 13 },
-  { title: 'Check disclosure compliance', description: 'Ensure disclosure has been complied with.', status: 'todo', priority: 'normal', owner: 'James Wilson', tags: ['disclosure', 'compliance', 'audit'], dueDays: 18 },
-  { title: 'Send reminder to applicant', description: 'Remind applicant of upcoming deadline.', status: 'todo', priority: 'normal', owner: 'Priya Patel', tags: ['correspondence', 'deadline', 'reminder'], dueDays: 20 },
-  { title: 'Prepare chronology', description: 'Draft timeline of events for the bundle.', status: 'in_progress', priority: 'high', owner: 'Sarah Chen', tags: ['chronology', 'bundle', 'timeline'], dueDays: 21 },
-  { title: 'Update contact details', description: "Verify and update parties' contact details.", status: 'done', priority: 'low', owner: 'James Wilson', tags: ['admin', 'contacts', 'data'], dueDays: 15 },
-  { title: 'Confirm attendance of witnesses', description: 'Check witness attendance and availability.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['witnesses', 'hearing', 'attendance'], dueDays: 24 },
-  { title: 'Redact sensitive information', description: 'Redact documents where required before disclosure.', status: 'in_progress', priority: 'high', owner: 'James Wilson', tags: ['redaction', 'disclosure', 'gdpr'], dueDays: 22 },
-  { title: 'Upload audio recording', description: 'Upload hearing recording to case file.', status: 'done', priority: 'low', owner: 'Priya Patel', tags: ['audio', 'admin', 'recording'], dueDays: 16 },
-  { title: 'Prepare directions questionnaire', description: 'Review and file directions questionnaire.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['questionnaire', 'directions', 'forms'], dueDays: 28 },
-  { title: 'Flag urgent cases', description: 'Mark cases for priority handling and allocation.', status: 'in_progress', priority: 'urgent', owner: 'James Wilson', tags: ['urgent', 'allocation', 'triage'], dueDays: 17 },
-  { title: 'Review pending applications', description: 'Scan and triage new applications.', status: 'todo', priority: 'normal', owner: 'Priya Patel', tags: ['applications', 'triage', 'intake'], dueDays: 19 },
-  { title: 'Notify parties of decision', description: 'Send written decision and appeal rights.', status: 'done', priority: 'normal', owner: 'Sarah Chen', tags: ['decision', 'correspondence', 'appeal-rights'], dueDays: 30 },
-  { title: 'Quality check case file', description: 'Run quality checklist and fix any gaps.', status: 'in_progress', priority: 'normal', owner: 'James Wilson', tags: ['quality', 'compliance', 'audit'], dueDays: 35 },
-  { title: 'Liaise with legal team', description: 'Discuss merits and next steps with legal.', status: 'todo', priority: 'high', owner: 'Priya Patel', tags: ['legal', 'strategy', 'advisory'], dueDays: 42 },
-  { title: 'Request extension of time', description: 'Consider and draft extension request if needed.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['deadline', 'directions', 'extension'], dueDays: 45 },
-  { title: 'Prepare cost summary', description: 'Draft summary of costs for assessment.', status: 'in_progress', priority: 'low', owner: 'James Wilson', tags: ['costs', 'assessment', 'billing'], dueDays: 50 },
-  { title: 'Arrange mediation', description: 'Contact mediation service and propose dates.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['mediation', 'listing', 'adr'], dueDays: 56 },
-  { title: 'Finalise appeal bundle', description: 'Compile and index appeal bundle for filing.', status: 'todo', priority: 'high', owner: 'James Wilson', tags: ['appeal', 'bundle', 'index'], dueDays: 60 },
-  { title: 'Chase outstanding disclosure', description: 'Follow up on any outstanding disclosure items.', status: 'in_progress', priority: 'normal', owner: 'Priya Patel', tags: ['disclosure', 'compliance', 'follow-up'], dueDays: 70 },
-  { title: 'Pre-hearing review', description: 'Complete pre-hearing review and checklist.', status: 'todo', priority: 'normal', owner: 'Sarah Chen', tags: ['hearing', 'review', 'checklist'], dueDays: 77 },
-  { title: 'Close case and archive', description: 'Final closure and archive once all steps complete.', status: 'todo', priority: 'low', owner: 'James Wilson', tags: ['archive', 'closure', 'completion'], dueDays: 84 },
-  { title: 'Verify service of documents', description: 'Confirm all parties have been properly served with required documents.', status: 'in_progress', priority: 'normal', owner: 'Priya Patel', tags: ['service', 'compliance', 'documents'], dueDays: 6 },
-  { title: 'Prepare post-hearing follow-up', description: 'Draft and schedule follow-up actions arising from the hearing outcome.', status: 'todo', priority: 'high', owner: 'Sarah Chen', tags: ['hearing', 'follow-up', 'actions'], dueDays: 2 },
-]
+async function ensureEncryptionSecret(sqlite: SQLiteConnection): Promise<void> {
+  const secret = getMobileDbSecret()
+  const sqliteAny = sqlite as unknown as {
+    isSecretStored?: () => Promise<{ result?: boolean }>
+    setEncryptionSecret?: (input: { passphrase: string }) => Promise<void>
+    changeEncryptionSecret?: (input: { passphrase: string; oldpassphrase: string }) => Promise<void>
+  }
+
+  const stored = await sqliteAny.isSecretStored?.()
+  if (stored?.result) {
+    return
+  }
+  if (!sqliteAny.setEncryptionSecret) {
+    throw new Error('SQLite encryption secret API is unavailable on this platform build')
+  }
+  await sqliteAny.setEncryptionSecret({ passphrase: secret })
+}
+
+const META_SEED_DEMO_V3 = 'seed_local_demo_v3'
+const META_SESSION_USER = 'local_session_user_id'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -130,6 +120,19 @@ function taskRowCount(values: { values?: unknown[] } | undefined): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function rowToAuthUser(row: Record<string, unknown>): AuthUser {
+  return {
+    id: String(row.id),
+    email: String(row.email),
+    username: String(row.username),
+    firstName: String(row.first_name ?? ''),
+    lastName: String(row.last_name ?? ''),
+    role: row.role as AuthUser['role'],
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+
 function toTask(row: Record<string, unknown>): Task {
   return {
     id: String(row.id),
@@ -145,11 +148,59 @@ function toTask(row: Record<string, unknown>): Task {
   }
 }
 
+async function ensureLocalDemoSeed(db: SQLiteDBConnection): Promise<void> {
+  const done = await db.query(`SELECT value FROM app_meta WHERE key = ?`, [META_SEED_DEMO_V3])
+  if ((done.values?.length ?? 0) > 0) {
+    return
+  }
+
+  const userCountRes = await db.query(`SELECT COUNT(*) AS count FROM users`)
+  if (taskRowCount(userCountRes) === 0) {
+    const now = nowIso()
+    for (const u of DEMO_SEED_USERS) {
+      await db.run(
+        `INSERT INTO users (id, email, username, first_name, last_name, password_hash, role, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [u.id, u.email, u.username, u.firstName, u.lastName, DEMO_SEED_PASSWORD_HASH, u.role, now, now],
+      )
+    }
+  }
+
+  const titleRows = await db.query(`SELECT title FROM tasks`)
+  const titles = new Set(
+    (titleRows.values ?? []).map((r) => String((r as Record<string, unknown>).title ?? '')),
+  )
+  const now = nowIso()
+  for (const tmpl of buildDemoTaskTemplates()) {
+    if (titles.has(tmpl.title)) continue
+    await db.run(
+      `INSERT INTO tasks (id, title, description, status, priority, owner, tags, due_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        generateId(),
+        tmpl.title,
+        tmpl.description,
+        tmpl.status,
+        tmpl.priority,
+        tmpl.owner,
+        stringifyTags(tmpl.tags),
+        dueIsoFromNow(tmpl.dueDays),
+        now,
+        now,
+      ],
+    )
+    titles.add(tmpl.title)
+  }
+
+  await db.run(`INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)`, [META_SEED_DEMO_V3, nowIso()])
+}
+
 async function getDb(): Promise<SQLiteDBConnection> {
   if (dbPromise) return dbPromise
 
   dbPromise = (async () => {
     const sqlite = new SQLiteConnection(CapacitorSQLite)
+    await ensureEncryptionSecret(sqlite)
     await sqlite.checkConnectionsConsistency()
 
     const existing = await sqlite.isConnection(DB_NAME, CONNECTION_READONLY)
@@ -179,43 +230,26 @@ async function getDb(): Promise<SQLiteDBConnection> {
       );
     `)
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        username TEXT NOT NULL UNIQUE,
+        first_name TEXT NOT NULL DEFAULT '',
+        last_name TEXT NOT NULL DEFAULT '',
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'viewer',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `)
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS app_meta (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
       );
     `)
 
-    const seedStatus = await db.query(`SELECT value FROM app_meta WHERE key = 'seed_demo_tasks_v1';`)
-    if ((seedStatus.values?.length ?? 0) === 0) {
-      const countRes = await db.query(`SELECT COUNT(*) AS count FROM tasks;`)
-      const existingCount = taskRowCount(countRes)
-
-      if (existingCount === 0) {
-        const now = nowIso()
-        for (const tmpl of DEMO_TEMPLATES) {
-          await db.run(
-            `
-              INSERT INTO tasks (id, title, description, status, priority, owner, tags, due_at, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            `,
-            [
-              generateId(),
-              tmpl.title,
-              tmpl.description,
-              tmpl.status,
-              tmpl.priority,
-              tmpl.owner,
-              stringifyTags(tmpl.tags),
-              dueIsoFromNow(tmpl.dueDays),
-              now,
-              now,
-            ],
-          )
-        }
-      }
-
-      await db.run(`INSERT INTO app_meta (key, value) VALUES (?, ?);`, ['seed_demo_tasks_v1', nowIso()])
-    }
+    await ensureLocalDemoSeed(db)
     return db
   })()
 
@@ -224,7 +258,155 @@ async function getDb(): Promise<SQLiteDBConnection> {
 
 /**
  * Use on-device SQLite for iOS/Android so APK/IPA builds work without a reachable HTTP API.
- * Opt out with VITE_MOBILE_LOCAL_DB=false (or 0 / no / off) when the native app should use VITE_API_BASE only.
+ * Opt out with VITE_MOBILE_LOCAL_DB=false (or 0 / no / off), or bake a non-empty VITE_API_BASE (e.g. emulator
+ * `http://10.0.2.2:8081`) so the app uses HTTP instead of SQLCipher.
+ */
+function authErr(status: number, message: string, code?: string): never {
+  const e = new Error(message) as Error & { status: number; code?: string }
+  e.status = status
+  if (code) e.code = code
+  throw e
+}
+
+function validStrongPasswordLocal(password: string): boolean {
+  if (password.length < 10) return false
+  if (!/[A-Z]/.test(password)) return false
+  if (!/[0-9]/.test(password)) return false
+  if (!/[^A-Za-z0-9]/.test(password)) return false
+  return true
+}
+
+async function getSessionUserId(db: SQLiteDBConnection): Promise<string | null> {
+  const r = await db.query(`SELECT value FROM app_meta WHERE key = ?`, [META_SESSION_USER])
+  const row = r.values?.[0] as Record<string, unknown> | undefined
+  if (!row?.value) return null
+  const v = String(row.value).trim()
+  return v || null
+}
+
+async function setSessionUserId(db: SQLiteDBConnection, userId: string | null): Promise<void> {
+  if (!userId) {
+    await db.run(`DELETE FROM app_meta WHERE key = ?`, [META_SESSION_USER])
+    return
+  }
+  await db.run(`INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)`, [META_SESSION_USER, userId])
+}
+
+export async function getLocalSessionUser(): Promise<AuthUser | null> {
+  const db = await getDb()
+  const sid = await getSessionUserId(db)
+  if (!sid) return null
+  const r = await db.query(
+    `SELECT id, email, username, first_name, last_name, role, created_at, updated_at FROM users WHERE id = ?`,
+    [sid],
+  )
+  const row = r.values?.[0]
+  return row ? rowToAuthUser(row as Record<string, unknown>) : null
+}
+
+export async function loginLocal(payload: AuthPayload): Promise<AuthUser> {
+  const db = await getDb()
+  const email = payload.email.trim().toLowerCase()
+  const r = await db.query(
+    `SELECT id, email, username, first_name, last_name, role, created_at, updated_at, password_hash FROM users WHERE lower(email) = ?`,
+    [email],
+  )
+  const row = r.values?.[0] as Record<string, unknown> | undefined
+  if (!row) {
+    authErr(401, 'Invalid email or password', 'authentication_required')
+  }
+  const ok = await verifyPasswordArgon2id(payload.password.trim(), String(row.password_hash))
+  if (!ok) {
+    authErr(401, 'Invalid email or password', 'authentication_required')
+  }
+  const { password_hash: _ignored, ...safe } = row as Record<string, unknown> & { password_hash: string }
+  const user = rowToAuthUser(safe as Record<string, unknown>)
+  await setSessionUserId(db, user.id)
+  return user
+}
+
+export async function registerLocal(payload: AuthPayload): Promise<AuthUser> {
+  const email = payload.email.trim()
+  const password = payload.password.trim()
+  const username = payload.username?.trim() ?? ''
+  const firstName = payload.firstName?.trim() ?? ''
+  const lastName = payload.lastName?.trim() ?? ''
+  if (!email) authErr(400, 'Email is required', 'email_required')
+  if (!email.includes('@')) authErr(400, 'Enter a valid email address', 'invalid_email')
+  if (!username) authErr(400, 'Display name is required', 'username_required')
+  if (!firstName) authErr(400, 'First name is required', 'first_name_required')
+  if (!lastName) authErr(400, 'Last name is required', 'last_name_required')
+  if (!password) authErr(400, 'Password is required', 'password_required')
+  if (password.length < 10) authErr(400, 'Password must be at least 10 characters', 'password_too_short')
+  if (!validStrongPasswordLocal(password)) authErr(400, 'Password must include one uppercase letter, one number, and one special character', 'password_weak')
+
+  const db = await getDb()
+  const dup = await db.query(`SELECT id FROM users WHERE lower(email) = ? OR lower(username) = ?`, [
+    email.toLowerCase(),
+    username.toLowerCase(),
+  ])
+  if ((dup.values?.length ?? 0) > 0) {
+    authErr(400, 'Email or display name is already in use', 'validation_error')
+  }
+
+  const id = generateId()
+  const hash = await hashPasswordArgon2id(password)
+  const now = nowIso()
+  await db.run(
+    `INSERT INTO users (id, email, username, first_name, last_name, password_hash, role, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'viewer', ?, ?)`,
+    [id, email, username, firstName, lastName, hash, now, now],
+  )
+  const user: AuthUser = {
+    id,
+    email,
+    username,
+    firstName,
+    lastName,
+    role: 'viewer',
+    createdAt: now,
+    updatedAt: now,
+  }
+  await setSessionUserId(db, id)
+  return user
+}
+
+export async function logoutLocal(): Promise<void> {
+  const db = await getDb()
+  await setSessionUserId(db, null)
+}
+
+export async function listUserDisplayNamesLocal(): Promise<{ displayNames: string[] }> {
+  const db = await getDb()
+  const r = await db.query(`SELECT username FROM users ORDER BY LOWER(username)`)
+  const names = (r.values ?? []).map((row) => String((row as Record<string, unknown>).username))
+  return { displayNames: names }
+}
+
+export async function recoverPasswordLocal(payload: RecoverPasswordPayload): Promise<RecoverPasswordResponse> {
+  const db = await getDb()
+  const email = payload.email.trim().toLowerCase()
+  if (!email) {
+    authErr(400, 'Email is required', 'email_required')
+  }
+  const r = await db.query(`SELECT id FROM users WHERE lower(email) = ?`, [email])
+  const exists = (r.values?.length ?? 0) > 0
+  if (!exists) {
+    return { status: 'if_account_exists' }
+  }
+  return {
+    status: 'ok',
+    message:
+      'Offline demo: email is not sent from the device. Use the shared demo password documented for staging builds, or contact your administrator.',
+  }
+}
+
+/**
+ * Native-only: use on-device SQLCipher when enabled.
+ * - Explicit `VITE_MOBILE_LOCAL_DB=true` (etc.) → local DB.
+ * - Explicit `false` / `0` / `no` / `off` → remote HTTP (`VITE_API_BASE` / default).
+ * - **Unset:** if `VITE_API_BASE` was set at build time (non-empty), assume remote API (e.g. `run-android.sh` + emulator);
+ *   otherwise default to local self-contained demo (release APKs with no API URL).
  */
 export function isNativeMobileSQLiteEnabled(): boolean {
   if (Capacitor.getPlatform() === 'web') {
@@ -232,6 +414,13 @@ export function isNativeMobileSQLiteEnabled(): boolean {
   }
   const flag = String(import.meta.env.VITE_MOBILE_LOCAL_DB ?? '').toLowerCase()
   if (flag === 'false' || flag === '0' || flag === 'no' || flag === 'off') {
+    return false
+  }
+  if (flag === 'true' || flag === '1' || flag === 'yes' || flag === 'on') {
+    return true
+  }
+  const apiBase = String(import.meta.env.VITE_API_BASE ?? '').trim()
+  if (apiBase.length > 0) {
     return false
   }
   return true

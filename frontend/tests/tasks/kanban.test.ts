@@ -51,5 +51,17 @@ describe('kanban helpers', () => {
     expect(merged.find((t) => t.id === 'b')!.status).toBe('todo')
     expect(merged.find((t) => t.id === 'c')!.status).toBe('todo')
   })
+
+  it('throws on duplicate ids in kanban column payload', () => {
+    const allTasks: Task[] = [
+      makeTask({ id: 'a', status: 'todo' }),
+      makeTask({ id: 'b', status: 'done' }),
+    ]
+    const items = [
+      makeTask({ id: 'b', status: 'done' }),
+      makeTask({ id: 'b', status: 'todo' }),
+    ]
+    expect(() => mergeColumnIntoTasks(allTasks, 'todo', items)).toThrow('duplicate task ids')
+  })
 })
 

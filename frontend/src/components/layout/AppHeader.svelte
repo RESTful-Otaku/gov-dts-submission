@@ -1,5 +1,6 @@
 <script lang="ts">
   import govLogo from '../../../assets/gov_uk.webp'
+  import { UI_COPY } from '../../lib/app/copy'
   import HelpMenuTriggerButton from '../help/HelpMenuTriggerButton.svelte'
 
   export let menuOpen = false
@@ -8,6 +9,7 @@
   export let ariaHidden = false
   /** When true, menu control lives in the task toolbar (collapsed chrome). */
   export let hideMenuButton = false
+  export let menuInitials = ''
 </script>
 
 <header class="app-header" aria-hidden={ariaHidden ? true : undefined}>
@@ -19,12 +21,12 @@
         <span class="govuk-logo__text"></span>
       </div>
       <div>
-        <h1>Caseworker task manager</h1>
-        <p>Capture, prioritise, and complete tasks.</p>
+        <h1>{UI_COPY.header.appTitle}</h1>
+        <p>{UI_COPY.header.appSubtitle}</p>
       </div>
     </div>
     {#if !hideMenuButton}
-      <HelpMenuTriggerButton {menuOpen} {onToggleMenu} />
+      <HelpMenuTriggerButton {menuOpen} {onToggleMenu} initials={menuInitials} />
     {/if}
     </div>
   </div>

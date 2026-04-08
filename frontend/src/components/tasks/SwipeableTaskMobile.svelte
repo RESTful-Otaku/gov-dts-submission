@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   import { onMount } from 'svelte'
 
   /**
@@ -205,7 +206,7 @@
     <div
       class="swipe-task-front"
       role="group"
-      aria-label="Task card. Swipe right to edit or left to delete."
+      aria-label={UI_COPY.tasks.views.swipeHintAria}
       style="transform: translate3d({visual}px, 0, 0); transition: {dragging
         ? 'none'
         : 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)'}"

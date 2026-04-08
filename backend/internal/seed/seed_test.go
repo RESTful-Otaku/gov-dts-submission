@@ -77,15 +77,15 @@ func TestDemoTasksStore_SkipsExistingTitles(t *testing.T) {
 	now := time.Now().UTC()
 	m := &mockStore{
 		existing: []*task.Task{
-			{Title: "Review case bundle", ID: "1", Status: task.StatusTodo, DueAt: now.Add(time.Hour), Priority: task.PriorityNormal},
+			{Title: "Bundle — casework item 1", ID: "1", Status: task.StatusTodo, DueAt: now.Add(time.Hour), Priority: task.PriorityNormal},
 		},
 	}
 	if err := DemoTasksStore(ctx, m); err != nil {
 		t.Fatalf("DemoTasksStore: %v", err)
 	}
 	for _, in := range m.created {
-		if in.Title == "Review case bundle" {
-			t.Fatal("should not create duplicate Review case bundle")
+		if in.Title == "Bundle — casework item 1" {
+			t.Fatal("should not create duplicate Bundle — casework item 1")
 		}
 	}
 	if len(m.created) == 0 {

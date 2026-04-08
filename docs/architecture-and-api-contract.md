@@ -21,7 +21,7 @@ This handbook is a concise map of the current system architecture, contract boun
 - Route surface:
   - Health/probes: `GET /api/health`, `GET /api/live`, `GET /api/ready`
   - Tasks: `GET/POST /api/tasks`, `GET/PATCH/PUT/DELETE /api/tasks/{id}`
-- Error shape is JSON object with `error` string.
+- Error shape is JSON object with `error` (human-readable) and `code` (stable machine-readable) fields.
 - Mutating JSON endpoints require `Content-Type: application/json`.
 - JSON request body size is capped at 1 MiB.
 - Unknown JSON fields are rejected.
@@ -32,10 +32,10 @@ This handbook is a concise map of the current system architecture, contract boun
 ## Security and interoperability invariants
 
 - Browser CORS preflight allows task mutation/auth flows:
-  - `Access-Control-Allow-Headers` includes `Content-Type` and `Authorization`.
+  - `Access-Control-Allow-Headers` includes `Content-Type`, `Authorization`, `X-API-Audience`, and `X-API-Issuer`.
 - API token auth:
   - Enabled by default outside development.
-  - Controlled by `API_AUTH_REQUIRED` and `API_AUTH_TOKEN`.
+  - Controlled by `API_AUTH_REQUIRED` and auth mode env vars (`token`/`jwt`/`oidc`).
 - Security headers are applied consistently on API responses.
 
 ## Data correctness invariants

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   export let tags: string[] = []
   export let onTagClick: (tag: string) => void
   export let stopPropagation = false
@@ -13,7 +14,7 @@
           type="button"
           class="tag-chip"
           on:click|stopPropagation={() => onTagClick(tag)}
-          title="Filter by this tag"
+          title={UI_COPY.common.filterByTag}
         >
           {tag}
         </button>
@@ -22,7 +23,7 @@
           type="button"
           class="tag-chip"
           on:click={() => onTagClick(tag)}
-          title="Filter by this tag"
+          title={UI_COPY.common.filterByTag}
         >
           {tag}
         </button>

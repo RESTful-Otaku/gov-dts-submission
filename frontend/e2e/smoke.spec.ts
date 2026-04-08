@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 
 async function expectTaskTitleVisible(page: any, title: string): Promise<void> {
-  // Don’t couple to semantics (cards=heading, list=table, kanban=h4). Assert visible text in the task area.
+  // Cards view may virtualize / lazy-load; narrow to this task via search so the row/card is in the DOM.
+  await page.getByRole('searchbox').fill(title)
   await expect(page.getByText(title, { exact: true })).toBeVisible({ timeout: 30_000 })
 }
 
@@ -22,7 +23,7 @@ test.describe('app smoke (API + built UI)', () => {
   async function openHelpSettings(page: any): Promise<void> {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
-    await page.getByRole('button', { name: 'Open menu' }).click()
+    await page.getByRole('button', { name: 'Open profile menu' }).click()
     await expect(page.locator('.modal-backdrop--help')).toBeVisible()
     await page.getByRole('tab', { name: 'Settings' }).click()
     await expect(page.getByRole('tabpanel')).toBeVisible()
@@ -103,8 +104,8 @@ test.describe('app smoke (API + built UI)', () => {
     await card.getByRole('button', { name: 'Delete' }).click()
     await expect(page.getByText('Delete task?')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Delete task' }).click()
-    await expect(page.getByText('Task deleted.')).toBeVisible()
+    await page.getByRole('button', { name: 'Delete task', exact: true }).click()
+    await expect(page.getByText('Tasks removed. Undo?')).toBeVisible()
   })
 
   test('filters flow: open advanced filters and filter by status done', async ({ page }) => {

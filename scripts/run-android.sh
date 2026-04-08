@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+export GOV_DTS_ROOT="${GOV_DTS_ROOT:-$ROOT}"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 source "$SCRIPT_DIR/lib.sh"
@@ -74,6 +75,9 @@ ANDROID_SDK_ENSURE_PACKAGES="${ANDROID_SDK_ENSURE_PACKAGES:-1}"
 
 # Set to 1 to delete and recreate the AVD when changing EMULATOR_DEVICE or after SDK updates.
 FORCE_ANDROID_AVD_RECREATE="${FORCE_ANDROID_AVD_RECREATE:-0}"
+
+# Seconds to wait for emulator ADB + sys.boot_completed after starting the AVD (default 360).
+EMULATOR_BOOT_TIMEOUT_S="${EMULATOR_BOOT_TIMEOUT_S:-360}"
 
 # Effective device id (set in setup_android_sdk)
 EMULATOR_DEVICE_EFFECTIVE=""
@@ -318,8 +322,46 @@ run_tests() {
     bash -c "cd \"$FRONTEND\" && bun run check && bun run test && bun run build"
 }
 
+# First adb serial matching emulator-* in "device" state (not offline/unauthorized).
+pick_emulator_serial() {
+  local line serial state
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == List* ]] && continue
+    read -r serial state _ <<<"$line"
+    [[ "$serial" =~ ^emulator-[0-9]+$ ]] || continue
+    [[ "$state" == "device" ]] && echo "$serial" && return 0
+  done < <(adb devices 2>/dev/null)
+  return 1
+}
+
+# Wait until an emulator is listed as "device" and boot is complete (polls adb).
+wait_for_emulator_ready() {
+  local timeout_s="${1:-360}"
+  local serial=""
+  local i=0 boot
+  adb start-server >/dev/null 2>&1 || true
+  echo "Waiting for emulator ADB + boot (up to ${timeout_s}s)..." >&2
+  while (( i < timeout_s )); do
+    serial="$(pick_emulator_serial || true)"
+    if [[ -n "$serial" ]]; then
+      boot="$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+      if [[ "$boot" == "1" ]]; then
+        echo "$serial"
+        return 0
+      fi
+    fi
+    sleep 2
+    ((i += 2)) || true
+  done
+  return 1
+}
+
 run_full_stack() {
   local port=$EMULATOR_API_PORT
+  # Leftover `go run ./cmd/api` on :8081 is common; auto-free unless explicitly disabled.
+  if [[ -z "${GOV_DTS_FREE_PORTS:-}" ]]; then
+    export GOV_DTS_FREE_PORTS=1
+  fi
   ensure_tcp_port_free "$port" "API (backend for Android emulator)" || exit 1
   API_URL_EMULATOR="http://10.0.2.2:$port"
 
@@ -330,19 +372,23 @@ run_full_stack() {
     echo "API failed to start (port $port may be in use)."
     exit 1
   fi
-  wait_for_api_ready "http://127.0.0.1:${port}" 90 "Android API" || exit 1
+  wait_for_api_ready "http://127.0.0.1:${port}" 120 "Android API" || exit 1
   echo "API running at http://localhost:$port (emulator will use $API_URL_EMULATOR)"
 
   print_section "Frontend: build for emulator (API=$API_URL_EMULATOR)"
+  # Remote API on device (10.0.2.2); must not use on-device SQLCipher (needs VITE_MOBILE_DB_SECRET).
   run_quiet_step "Building frontend web assets" \
-    bash -c "cd \"$FRONTEND\" && VITE_API_BASE=\"$API_URL_EMULATOR\" bun run build"
+    bash -c "cd \"$FRONTEND\" && VITE_API_BASE=\"$API_URL_EMULATOR\" VITE_MOBILE_LOCAL_DB=false bun run build"
   run_quiet_step "Syncing Capacitor Android project" \
-    bash -c "cd \"$FRONTEND\" && bunx cap sync"
+    bash -c "cd \"$FRONTEND\" && bunx cap sync android"
 
   print_section "Android: launching emulator and app"
   export ANDROID_HOME="$ANDROID_SDK_DIR"
   export ANDROID_SDK_ROOT="$ANDROID_SDK_DIR"
   export PATH="$ANDROID_SDK_DIR/platform-tools:$ANDROID_SDK_DIR/emulator:$ANDROID_SDK_DIR/cmdline-tools/latest/bin:$PATH"
+  # Gradle / Android Studio read JAVA_HOME; ANDROID_JAVA_HOME alone is not enough for the wrapper.
+  export JAVA_HOME="${ANDROID_JAVA_HOME:?}"
+  export PATH="$JAVA_HOME/bin:$PATH"
   # AVD may be in $HOME/.config/.android/avd on some setups (XDG)
   if [[ -d "$HOME/.config/.android/avd" ]] && [[ -d "$HOME/.config/.android/avd/${AVD_NAME}.avd" ]]; then
     export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
@@ -350,36 +396,43 @@ run_full_stack() {
 
   strip_avd_config_ini_skin_lines
 
-  # Start emulator in background if not already running
-  if ! adb devices 2>/dev/null | grep -q emulator; then
-    echo "Starting emulator (this may take 1–2 minutes on first boot)..."
+  local device=""
+  device="$(pick_emulator_serial || true)"
+  if [[ -z "$device" ]]; then
+    echo "Starting emulator (this may take 1–3 minutes on first boot)..."
     local -a emu_args=(emulator -avd "$AVD_NAME" -no-snapshot-load -no-metrics)
     append_platform_skin_launch_args emu_args
     "${emu_args[@]}" &
-    local emu_pid=$!
-    echo "Waiting for emulator to boot..."
-    adb wait-for-device
-    while true; do
-      local boot
-      boot=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+    device="$(wait_for_emulator_ready "${EMULATOR_BOOT_TIMEOUT_S:-360}")" || {
+      echo "Emulator did not reach ready state in time. Check: emulator -list-avds, KVM/virt, and adb devices." >&2
+      exit 1
+    }
+    echo "Emulator ready ($device)."
+  else
+    echo "Using already-running emulator ($device)."
+    # Ensure boot finished (cold attach)
+    local boot bwait=0
+    while (( bwait < 300 )); do
+      boot="$(adb -s "$device" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
       [[ "$boot" == "1" ]] && break
       sleep 2
+      ((bwait += 2)) || true
     done
-    echo "Emulator ready."
-  else
-    echo "Emulator already running."
+    if [[ "$boot" != "1" ]]; then
+      echo "Emulator $device is visible but not fully booted; continuing anyway (install may fail)." >&2
+    fi
   fi
 
-  echo "Building and installing app on emulator..."
-  local device
-  device=$(adb devices | grep -E 'emulator-[0-9]+' | head -1 | awk '{print $1}')
-  if [[ -z "$device" ]]; then
-    echo "No emulator device found. Run with device connected."
+  export ANDROID_SERIAL="$device"
+  adb -s "$device" wait-for-device
+
+  echo "Building and installing app on emulator ($device)..."
+  # Drop daemons that may have started under a different JDK before we fixed JAVA_HOME.
+  (cd "$FRONTEND/android" && ./gradlew --stop >/dev/null 2>&1) || true
+  (cd "$FRONTEND/android" && ./gradlew installDebug --no-daemon) || {
+    echo "Gradle installDebug failed. Try: cd frontend/android && ./gradlew installDebug --stacktrace" >&2
     exit 1
-  fi
-  export JAVA_HOME="${ANDROID_JAVA_HOME:-}"
-  # Build and install APK via Gradle (ensures app is installed on device)
-  (cd "$FRONTEND/android" && ./gradlew installDebug)
+  }
   echo "App installed. Launching..."
   adb -s "$device" shell am start -n uk.gov.caseworker.taskmanager/.MainActivity
   echo ""
@@ -388,18 +441,69 @@ run_full_stack() {
   wait "$API_PID"
 }
 
+# True if $1 looks like a Java 17–21 home (AGP-compatible).
+java_home_supported_for_android() {
+  local home="${1:?}"
+  [[ -x "$home/bin/java" ]] || return 1
+  local line major
+  line="$("$home/bin/java" -version 2>&1 | head -1)"
+  # Java 8: version "1.8.0_..."
+  [[ "$line" == *"version \"1."* ]] && return 1
+  if [[ "$line" =~ version\ \"([0-9]+) ]]; then
+    major="${BASH_REMATCH[1]}"
+  else
+    return 1
+  fi
+  (( major >= 17 && major <= 21 ))
+}
+
 find_java17_or_21() {
-  local java_home=""
-  if [[ -n "${JAVA_HOME:-}" ]] && [[ -x "${JAVA_HOME}/bin/java" ]]; then
-    local ver
-    ver=$("${JAVA_HOME}/bin/java" -version 2>&1 | head -1)
-    if [[ "$ver" =~ "17" ]] || [[ "$ver" =~ "21" ]]; then
-      echo "$JAVA_HOME"
+  local h
+  if [[ "$(uname -s)" == "Darwin" ]] && [[ -x "/usr/libexec/java_home" ]]; then
+    for v in 21 17; do
+      h="$(/usr/libexec/java_home -v "$v" 2>/dev/null)" || continue
+      if java_home_supported_for_android "$h"; then
+        echo "$h"
+        return 0
+      fi
+    done
+  fi
+  if [[ -n "${JAVA_HOME:-}" ]] && java_home_supported_for_android "$JAVA_HOME"; then
+    echo "$JAVA_HOME"
+    return 0
+  fi
+  if command -v java >/dev/null 2>&1; then
+    local java_exe real
+    java_exe="$(command -v java)"
+    if command -v realpath >/dev/null 2>&1; then
+      real="$(realpath "$java_exe" 2>/dev/null || echo "$java_exe")"
+    else
+      real="$(readlink -f "$java_exe" 2>/dev/null || echo "$java_exe")"
+    fi
+    h="$(cd "$(dirname "$real")/.." && pwd)"
+    if java_home_supported_for_android "$h"; then
+      echo "$h"
       return 0
     fi
   fi
-  for base in /usr/lib/jvm/zulu-21 /usr/lib/jvm/zulu-17 /usr/lib/jvm/java-21-openjdk /usr/lib/jvm/java-17-openjdk /usr/lib/jvm/jdk-21 /usr/lib/jvm/jdk-17; do
-    if [[ -d "$base" ]] && [[ -x "$base/bin/java" ]]; then
+  for base in \
+    /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home \
+    /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+    /usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home \
+    /usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+    /usr/lib/jvm/zulu-21-amd64 \
+    /usr/lib/jvm/zulu-17-amd64 \
+    /usr/lib/jvm/zulu-21 \
+    /usr/lib/jvm/zulu-17 \
+    /usr/lib/jvm/java-21-openjdk-amd64 \
+    /usr/lib/jvm/java-17-openjdk-amd64 \
+    /usr/lib/jvm/java-21-openjdk \
+    /usr/lib/jvm/java-17-openjdk \
+    /usr/lib/jvm/jdk-21-openjdk \
+    /usr/lib/jvm/jdk-17-openjdk \
+    /usr/lib/jvm/jdk-21 \
+    /usr/lib/jvm/jdk-17; do
+    if [[ -d "$base" ]] && java_home_supported_for_android "$base"; then
       echo "$base"
       return 0
     fi
@@ -422,12 +526,20 @@ main() {
     exit 0
   fi
 
-  # Check Java 17/21 (Android Gradle requires it; Java 25 is not supported)
+  # Check Java 17/21 (Android Gradle requires it; newer JDKs break the wrapper)
   if ! ANDROID_JAVA_HOME=$(find_java17_or_21); then
     print_section "Java 17 or 21 required"
-    echo "The Android build requires Java 17 or 21. Java 25 is not supported."
+    if command -v java &>/dev/null; then
+      echo "Default java on PATH: $(java -version 2>&1 | head -1)"
+    fi
+    echo "The Android Gradle plugin used here requires Java 17–21 (not Java 22+)."
     echo ""
-    echo "Install Java 17, then run this script again:"
+    echo "Point the script at a supported JDK, for example:"
+    echo "  export JAVA_HOME=/usr/lib/jvm/java-21-openjdk"
+    echo "  export ANDROID_JAVA_HOME=\"\$JAVA_HOME\""
+    echo "  ./scripts/run-android.sh"
+    echo ""
+    echo "Install Java 17 if needed, then run again:"
     echo "  sudo pacman -S jdk17-openjdk"
     echo ""
     echo "Or let the script install it (will prompt for sudo):"
@@ -435,6 +547,8 @@ main() {
     exit 1
   fi
   export ANDROID_JAVA_HOME
+  export JAVA_HOME="$ANDROID_JAVA_HOME"
+  export PATH="$JAVA_HOME/bin:$PATH"
 
   print_section "Setup: Android SDK"
   setup_android_sdk

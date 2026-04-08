@@ -5,6 +5,7 @@ import type {
   PriorityFilter,
   SortKey,
   StatusFilter,
+  TaskSavedView,
   Theme,
   UiDensity,
   ViewMode,
@@ -30,6 +31,7 @@ export const TASK_UI_LS = {
   startupViewMode: 'task-startup-view-mode',
   defaultSortKey: 'task-default-sort-key',
   defaultSortAscending: 'task-default-sort-ascending',
+  savedViews: 'task-saved-views-v1',
 } as const
 
 export type TaskUiPersistedState = {
@@ -213,7 +215,15 @@ export function loadTaskUiBootstrapFromStorage(): LoadedTaskUiBootstrap {
   }
 
   const storedSortKey = localStorage.getItem(TASK_UI_LS.sortKey) as SortKey | null
-  if (storedSortKey === 'due' || storedSortKey === 'title' || storedSortKey === 'priority') {
+  if (
+    storedSortKey === 'due' ||
+    storedSortKey === 'title' ||
+    storedSortKey === 'priority' ||
+    storedSortKey === 'owner' ||
+    storedSortKey === 'status' ||
+    storedSortKey === 'tags' ||
+    storedSortKey === 'created'
+  ) {
     out.sortKey = storedSortKey
   }
 
@@ -298,7 +308,11 @@ export function loadTaskUiBootstrapFromStorage(): LoadedTaskUiBootstrap {
   if (
     storedDefaultSortKey === 'due' ||
     storedDefaultSortKey === 'title' ||
-    storedDefaultSortKey === 'priority'
+    storedDefaultSortKey === 'priority' ||
+    storedDefaultSortKey === 'owner' ||
+    storedDefaultSortKey === 'status' ||
+    storedDefaultSortKey === 'tags' ||
+    storedDefaultSortKey === 'created'
   ) {
     out.defaultSortKey = storedDefaultSortKey
   }
@@ -309,4 +323,42 @@ export function loadTaskUiBootstrapFromStorage(): LoadedTaskUiBootstrap {
   }
 
   return out
+}
+
+function isTaskSavedView(value: unknown): value is TaskSavedView {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<TaskSavedView>
+  if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') return false
+  const state = candidate.state as TaskSavedView['state'] | undefined
+  if (!state) return false
+  if (!['cards', 'list', 'kanban'].includes(state.viewMode)) return false
+  if (
+    !['due', 'title', 'priority', 'owner', 'status', 'tags', 'created'].includes(state.sortKey)
+  )
+    return false
+  if (typeof state.sortAscending !== 'boolean') return false
+  if (!['all', 'todo', 'in_progress', 'done'].includes(state.statusFilter)) return false
+  if (!['all', 'low', 'normal', 'high', 'urgent'].includes(state.priorityFilter)) return false
+  if (typeof state.ownerFilter !== 'string') return false
+  if (!Array.isArray(state.tagFilters) || !state.tagFilters.every((x) => typeof x === 'string')) return false
+  if (typeof state.searchTerm !== 'string') return false
+  if (typeof state.filterFrom !== 'string' || typeof state.filterTo !== 'string') return false
+  if (typeof state.showFilters !== 'boolean') return false
+  return true
+}
+
+export function loadSavedViewsFromStorage(): TaskSavedView[] {
+  const raw = localStorage.getItem(TASK_UI_LS.savedViews)
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is TaskSavedView => isTaskSavedView(v))
+  } catch {
+    return []
+  }
+}
+
+export function persistSavedViewsToStorage(savedViews: TaskSavedView[]): void {
+  localStorage.setItem(TASK_UI_LS.savedViews, JSON.stringify(savedViews))
 }

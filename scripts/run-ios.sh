@@ -107,7 +107,8 @@ run_tests() {
 build_web_assets() {
   print_section "Frontend: build for iOS Simulator"
   if (( LOCAL_SQLITE == 1 )); then
-    (cd "$FRONTEND" && VITE_MOBILE_LOCAL_DB=true ${PM} run build)
+    gov_dts_export_vite_mobile_local_db_env
+    (cd "$FRONTEND" && ${PM} run build)
   else
     # For iOS Simulator, `localhost` typically resolves to the host machine.
     (cd "$FRONTEND" && VITE_API_BASE="${API_BASE_URL}" ${PM} run build)

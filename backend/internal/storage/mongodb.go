@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -160,15 +161,62 @@ func (s *MongoStore) GetTask(ctx context.Context, id string) (*task.Task, error)
 }
 
 func (s *MongoStore) ListTasks(ctx context.Context, listOpts ListOptions) ([]*task.Task, error) {
-	opts := options.Find().SetSort(bson.D{
-		{Key: "dueAt", Value: 1},
-		{Key: "id", Value: 1},
-	})
+	filter := bson.D{}
+	if listOpts.Status != "" {
+		filter = append(filter, bson.E{Key: "status", Value: listOpts.Status})
+	}
+	if listOpts.Priority != "" {
+		filter = append(filter, bson.E{Key: "priority", Value: listOpts.Priority})
+	}
+	if listOpts.Owner != "" {
+		filter = append(filter, bson.E{Key: "owner", Value: bson.D{{Key: "$regex", Value: listOpts.Owner}, {Key: "$options", Value: "i"}}})
+	}
+	if listOpts.Tag != "" {
+		filter = append(filter, bson.E{Key: "tags", Value: bson.D{{Key: "$elemMatch", Value: bson.D{{Key: "$regex", Value: listOpts.Tag}, {Key: "$options", Value: "i"}}}}})
+	}
+	if listOpts.Q != "" {
+		filter = append(filter, bson.E{
+			Key: "$or",
+			Value: bson.A{
+				bson.D{{Key: "title", Value: bson.D{{Key: "$regex", Value: listOpts.Q}, {Key: "$options", Value: "i"}}}},
+				bson.D{{Key: "description", Value: bson.D{{Key: "$regex", Value: listOpts.Q}, {Key: "$options", Value: "i"}}}},
+				bson.D{{Key: "status", Value: bson.D{{Key: "$regex", Value: listOpts.Q}, {Key: "$options", Value: "i"}}}},
+				bson.D{{Key: "priority", Value: bson.D{{Key: "$regex", Value: listOpts.Q}, {Key: "$options", Value: "i"}}}},
+				bson.D{{Key: "owner", Value: bson.D{{Key: "$regex", Value: listOpts.Q}, {Key: "$options", Value: "i"}}}},
+				bson.D{{Key: "tags", Value: bson.D{{Key: "$elemMatch", Value: bson.D{{Key: "$regex", Value: listOpts.Q}, {Key: "$options", Value: "i"}}}}}},
+			},
+		})
+	}
+	sort := strings.ToLower(strings.TrimSpace(listOpts.Sort))
+	orderDesc := strings.ToLower(strings.TrimSpace(listOpts.Order)) == "desc"
+
+	if sort == "status" {
+		return s.listTasksSortedByStatus(ctx, filter, listOpts, orderDesc)
+	}
+
+	sortField := "dueAt"
+	switch sort {
+	case "title":
+		sortField = "title"
+	case "priority":
+		sortField = "priority"
+	case "owner":
+		sortField = "owner"
+	case "tags":
+		sortField = "tags"
+	case "created":
+		sortField = "createdAt"
+	}
+	sortDir := 1
+	if orderDesc {
+		sortDir = -1
+	}
+	opts := options.Find().SetSort(bson.D{{Key: sortField, Value: sortDir}, {Key: "id", Value: sortDir}})
 	if listOpts.Limit > 0 {
 		opts.SetLimit(int64(listOpts.Limit))
 		opts.SetSkip(int64(max(0, listOpts.Offset)))
 	}
-	cur, err := s.collection.Find(ctx, bson.D{}, opts)
+	cur, err := s.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +237,11 @@ func (s *MongoStore) ListTasks(ctx context.Context, listOpts ListOptions) ([]*ta
 }
 
 func (s *MongoStore) UpdateTaskStatus(ctx context.Context, id string, status task.Status) (*task.Task, error) {
+	current, err := s.GetTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
 	update := bson.D{
 		{Key: "$set", Value: bson.D{
@@ -196,12 +249,15 @@ func (s *MongoStore) UpdateTaskStatus(ctx context.Context, id string, status tas
 			{Key: "updatedAt", Value: now},
 		}},
 	}
-	res, err := s.collection.UpdateOne(ctx, bson.D{{Key: "id", Value: id}}, update)
+	res, err := s.collection.UpdateOne(ctx, bson.D{{Key: "id", Value: id}, {Key: "updatedAt", Value: current.UpdatedAt.UTC()}}, update)
 	if err != nil {
 		return nil, err
 	}
 	if res.MatchedCount == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }
@@ -236,6 +292,7 @@ func (s *MongoStore) UpdateTask(ctx context.Context, id string, in *task.UpdateT
 		tags = in.Tags
 	}
 
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
 	update := bson.D{
 		{Key: "$set", Value: bson.D{
@@ -247,14 +304,72 @@ func (s *MongoStore) UpdateTask(ctx context.Context, id string, in *task.UpdateT
 			{Key: "updatedAt", Value: now},
 		}},
 	}
-	res, err := s.collection.UpdateOne(ctx, bson.D{{Key: "id", Value: id}}, update)
+	res, err := s.collection.UpdateOne(ctx, bson.D{{Key: "id", Value: id}, {Key: "updatedAt", Value: current.UpdatedAt.UTC()}}, update)
 	if err != nil {
 		return nil, err
 	}
 	if res.MatchedCount == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
+}
+
+// listTasksSortedByStatus uses aggregation so workflow order (todo → in_progress → done) matches SQL stores.
+func (s *MongoStore) listTasksSortedByStatus(ctx context.Context, filter bson.D, listOpts ListOptions, orderDesc bool) ([]*task.Task, error) {
+	dir := 1
+	if orderDesc {
+		dir = -1
+	}
+	statusRank := bson.D{
+		{Key: "$switch", Value: bson.D{
+			{Key: "branches", Value: bson.A{
+				bson.D{
+					{Key: "case", Value: bson.D{{Key: "$eq", Value: bson.A{"$status", "todo"}}}},
+					{Key: "then", Value: 1},
+				},
+				bson.D{
+					{Key: "case", Value: bson.D{{Key: "$eq", Value: bson.A{"$status", "in_progress"}}}},
+					{Key: "then", Value: 2},
+				},
+				bson.D{
+					{Key: "case", Value: bson.D{{Key: "$eq", Value: bson.A{"$status", "done"}}}},
+					{Key: "then", Value: 3},
+				},
+			}},
+			{Key: "default", Value: 4},
+		}},
+	}
+	pipeline := []bson.D{
+		{{Key: "$match", Value: filter}},
+		{{Key: "$addFields", Value: bson.D{{Key: "statusRank", Value: statusRank}}}},
+		{{Key: "$sort", Value: bson.D{{Key: "statusRank", Value: dir}, {Key: "id", Value: dir}}}},
+	}
+	if listOpts.Limit > 0 {
+		if off := max(0, listOpts.Offset); off > 0 {
+			pipeline = append(pipeline, bson.D{{Key: "$skip", Value: int64(off)}})
+		}
+		pipeline = append(pipeline, bson.D{{Key: "$limit", Value: int64(listOpts.Limit)}})
+	}
+	cur, err := s.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var tasks []*task.Task
+	for cur.Next(ctx) {
+		var doc mongoTaskDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, doc.toDomain())
+	}
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	return tasks, nil
 }
 
 func (s *MongoStore) DeleteTask(ctx context.Context, id string) error {

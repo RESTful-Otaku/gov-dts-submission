@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { fade } from 'svelte/transition'
+  import { UI_COPY } from '../../lib/app/copy'
   import type { Task, TaskPriority, TaskStatus } from '../../lib/api'
   import ModalHeader from '../modals/ModalHeader.svelte'
   import TaskCardActions from './TaskCardActions.svelte'
@@ -12,6 +13,7 @@
   export let modalContentTransition: (node: HTMLElement, params: { isNarrow?: boolean }) => any
 
   export let task: Task
+  export let showActions = true
   export let onClose: () => void
   export let onEdit: () => void
   export let onDelete: () => void
@@ -62,28 +64,28 @@
     on:keydown={(e) => e.key === 'Escape' && onClose()}
     transition:modalContentTransition={{ isNarrow }}
   >
-    <ModalHeader titleId="task-reader-title" title="View task" onClose={onClose} />
+    <ModalHeader titleId="task-reader-title" title={UI_COPY.tasks.reader.title} onClose={onClose} />
 
-    <div class="task-form task-readonly-form" aria-label="Task details (read-only)">
+    <div class="task-form task-readonly-form" aria-label={UI_COPY.tasks.reader.detailsAria}>
       <div class="field">
-        <span class="task-readonly-label">Title</span>
+        <span class="task-readonly-label">{UI_COPY.tasks.reader.titleLabel}</span>
         <p class="task-readonly-value task-readonly-value--title">{task.title}</p>
       </div>
 
       <div class="field">
-        <span id="task-reader-status-label" class="task-readonly-label">Status</span>
+        <span id="task-reader-status-label" class="task-readonly-label">{UI_COPY.tasks.reader.statusLabel}</span>
         <div class="task-readonly-control" role="group" aria-labelledby="task-reader-status-label">
           <TaskStatusBadge status={task.status} label={statusLabel(task.status)} />
         </div>
       </div>
 
       <div class="field">
-        <span class="task-readonly-label">Description</span>
+        <span class="task-readonly-label">{UI_COPY.tasks.reader.descriptionLabel}</span>
         <p class="task-readonly-value task-readonly-value--multiline">{task.description ?? ''}</p>
       </div>
 
       <div class="field">
-        <span id="task-reader-priority-label" class="task-readonly-label">Priority</span>
+        <span id="task-reader-priority-label" class="task-readonly-label">{UI_COPY.tasks.reader.priorityLabel}</span>
         <div class="task-readonly-control" role="group" aria-labelledby="task-reader-priority-label">
           <TaskPriorityBadge
             priority={task.priority}
@@ -93,33 +95,35 @@
       </div>
 
       <div class="field">
-        <span class="task-readonly-label">Tags</span>
+        <span class="task-readonly-label">{UI_COPY.tasks.reader.tagsLabel}</span>
         <p class="task-readonly-value">{tagsJoined}</p>
       </div>
 
       <div class="field">
-        <span class="task-readonly-label">Owner</span>
+        <span class="task-readonly-label">{UI_COPY.tasks.reader.ownerLabel}</span>
         <p class="task-readonly-value">{task.owner ?? ''}</p>
       </div>
 
       <div class="field-group">
         <div class="field">
-          <span class="task-readonly-label">Due</span>
+          <span class="task-readonly-label">{UI_COPY.tasks.reader.dueLabel}</span>
           <p class="task-readonly-value">{formatDate(task.dueAt)}</p>
         </div>
         <div class="field">
-          <span class="task-readonly-label">Created</span>
+          <span class="task-readonly-label">{UI_COPY.tasks.reader.createdLabel}</span>
           <p class="task-readonly-value">{formatDate(task.createdAt)}</p>
         </div>
       </div>
 
-      <div class="form-actions">
-        <TaskCardActions
-          onEdit={onEdit}
-          onDelete={onDelete}
-          deleteTitle={`Delete task ${task.title}`}
-        />
-      </div>
+      {#if showActions}
+        <div class="form-actions">
+          <TaskCardActions
+            onEdit={onEdit}
+            onDelete={onDelete}
+            deleteTitle={`${UI_COPY.common.deleteTask} ${task.title}`}
+          />
+        </div>
+      {/if}
     </div>
   </div>
 </div>

@@ -20,8 +20,11 @@ export type OnboardingStepId =
   | 'list_multiselect'
   | 'list_bulk_delete'
   | 'kanban_drag'
+  | 'admin_main_tabs'
+  | 'admin_users_filters'
+  | 'admin_audit_review'
 
-export type HelpTabId = 'guide' | 'checklist' | 'sections' | 'settings' | 'about'
+export type HelpTabId = 'profile' | 'guide' | 'checklist' | 'settings' | 'about'
 
 export type TourStepDef = {
   id: OnboardingStepId
@@ -37,4 +40,6 @@ export type TourStepDef = {
   narrowOnly?: boolean
   /** Completed by user action (not “Next” alone) */
   interactive?: boolean
+  /** Tour step only for administrators */
+  requiresAdmin?: boolean
 }

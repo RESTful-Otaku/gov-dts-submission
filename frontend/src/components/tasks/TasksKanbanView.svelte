@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_COPY } from '../../lib/app/copy'
   import { flip } from 'svelte/animate'
   import { dndzone } from 'svelte-dnd-action'
   import type { OnboardingStepId } from '../../lib/app/onboarding/types'
@@ -14,6 +15,7 @@
   export let visibleTasks: Task[]
   export let KANBAN_COLUMNS: { status: TaskStatus; title: string }[]
   export let KANBAN_FLIP_MS: number
+  export let canMutateTasks = true
 
   export let tasksForColumn: (status: TaskStatus) => Task[]
 
@@ -33,7 +35,11 @@
   export let tourAnchorTaskId: string | null = null
 
   let readerTaskId: string | null = null
-  $: readerTask = readerTaskId === null ? null : visibleTasks.find((t) => t.id === readerTaskId) ?? null
+  $: visibleTaskById = new Map(visibleTasks.map((t) => [t.id, t]))
+  $: readerTask = readerTaskId === null ? null : visibleTaskById.get(readerTaskId) ?? null
+  $: columnTasks = Object.fromEntries(
+    KANBAN_COLUMNS.map((column) => [column.status, tasksForColumn(column.status)]),
+  ) as Record<TaskStatus, Task[]>
 
   function openReader(taskId: string): void {
     readerTaskId = taskId
@@ -41,7 +47,7 @@
   }
 </script>
 
-<div class="kanban" role="region" aria-label="Tasks in kanban view" data-tour="pick-task">
+<div class="kanban" role="region" aria-label={UI_COPY.tasks.views.kanbanRegionAria} data-tour="pick-task">
   {#each KANBAN_COLUMNS as column}
     <section
       class="kanban-column"
@@ -51,21 +57,22 @@
       <header class="kanban-column-header">
         <h3>{column.title}</h3>
         <span class="badge">
-          {visibleTasks.filter((t) => t.status === column.status).length}
+          {columnTasks[column.status]?.length ?? 0}
         </span>
       </header>
       <div
         class="kanban-column-body"
         use:dndzone={{
-          items: tasksForColumn(column.status),
+          items: columnTasks[column.status] ?? [],
           flipDurationMs: KANBAN_FLIP_MS,
           type: 'kanban',
+          dragDisabled: !canMutateTasks,
         }}
         on:consider={(e) => handleKanbanConsider(column.status, e)}
         on:finalize={(e) => handleKanbanFinalize(column.status, e)}
         aria-label={column.title}
       >
-        {#each tasksForColumn(column.status) as task (task.id)}
+        {#each columnTasks[column.status] ?? [] as task (task.id)}
           {@const anchor = tourAnchorTaskId !== null && task.id === tourAnchorTaskId}
           {@const cardTourSpotlight =
             anchor && tourSpotlightStepId === 'edit_task'
@@ -108,17 +115,19 @@
               onTagClick={filterByTag}
               stopPropagation={true}
             />
-            <TaskMetaDl rows={[{ term: 'Due', description: formatDate(task.dueAt) }]} />
-            <TaskCardActions
-              stopPropagation={true}
-              tourSpotlight={cardTourSpotlight}
-              onEdit={() => openEditModal(task)}
-              onDelete={() => handleDeleteTask(task.id)}
-              deleteTitle={`Delete task ${task.title}`}
-            />
+            <TaskMetaDl dueDescription={formatDate(task.dueAt)} />
+            {#if canMutateTasks}
+              <TaskCardActions
+                stopPropagation={true}
+                tourSpotlight={cardTourSpotlight}
+                onEdit={() => openEditModal(task)}
+                onDelete={() => handleDeleteTask(task.id)}
+                deleteTitle={`${UI_COPY.common.deleteTask} ${task.title}`}
+              />
+            {/if}
           </article>
         {:else}
-          <p class="kanban-empty">Drop tasks here or add via Create task.</p>
+          <p class="kanban-empty">{UI_COPY.tasks.views.kanbanEmpty}</p>
         {/each}
       </div>
     </section>
@@ -130,6 +139,7 @@
     isNarrow={isNarrow}
     modalContentTransition={modalContentTransition}
     task={readerTask}
+    showActions={canMutateTasks}
     onClose={() => (readerTaskId = null)}
     onEdit={() => openEditModal(readerTask)}
     onDelete={() => handleDeleteTask(readerTask.id)}

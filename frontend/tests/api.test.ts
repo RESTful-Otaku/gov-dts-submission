@@ -4,17 +4,26 @@ const DEFAULT_BASE = 'http://localhost:8080'
 
 describe('api', () => {
   let fetchMock: ReturnType<typeof vi.fn>
+  let originalFetch: typeof globalThis.fetch | undefined
   let api: typeof import('../src/lib/api')
 
   beforeEach(() => {
     // Ensure the base URL is stable regardless of developer shell env.
     process.env.VITE_API_BASE = DEFAULT_BASE
     fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    originalFetch = globalThis.fetch
+    ;(globalThis as { fetch?: typeof globalThis.fetch }).fetch = fetchMock as unknown as typeof globalThis.fetch
   })
 
   afterEach(() => {
-    vi.unstubAllGlobals()
+    if (api?.clearApiAuthContext) {
+      api.clearApiAuthContext()
+    }
+    if (originalFetch) {
+      globalThis.fetch = originalFetch
+      return
+    }
+    delete (globalThis as { fetch?: typeof globalThis.fetch }).fetch
   })
 
   describe('healthReady', () => {
@@ -49,6 +58,23 @@ describe('api', () => {
     })
   })
 
+  describe('listUserDisplayNames', () => {
+    it('returns displayNames from API', async () => {
+      api = await import('../src/lib/api')
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ displayNames: ['Ada Lovelace', 'Grace Hopper'] }),
+      })
+      const result = await api.listUserDisplayNames()
+      expect(result).toEqual({ displayNames: ['Ada Lovelace', 'Grace Hopper'] })
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/users\/display-names$/),
+        expect.any(Object),
+      )
+    })
+  })
+
   describe('listTasks', () => {
     it('returns tasks array', async () => {
       api = await import('../src/lib/api')
@@ -61,6 +87,37 @@ describe('api', () => {
       const result = await api.listTasks()
       expect(result).toEqual(tasks)
       expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/tasks\?limit=200&offset=0$/), expect.any(Object))
+    })
+
+    it('serializes server-query params', async () => {
+      api = await import('../src/lib/api')
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      })
+      await api.listTasks({
+        limit: 50,
+        offset: 10,
+        q: 'alpha',
+        status: 'in_progress',
+        priority: 'high',
+        owner: 'Caseworker A',
+        tag: 'evidence',
+        sort: 'title',
+        order: 'desc',
+      })
+      const url = String(fetchMock.mock.calls[0]?.[0] ?? '')
+      expect(url).toContain('/api/tasks?')
+      expect(url).toContain('limit=50')
+      expect(url).toContain('offset=10')
+      expect(url).toContain('q=alpha')
+      expect(url).toContain('status=in_progress')
+      expect(url).toContain('priority=high')
+      expect(url).toContain('owner=Caseworker+A')
+      expect(url).toContain('tag=evidence')
+      expect(url).toContain('sort=title')
+      expect(url).toContain('order=desc')
     })
   })
 
@@ -102,6 +159,28 @@ describe('api', () => {
           body: JSON.stringify({ status: 'done' }),
         })
       )
+    })
+  })
+
+  describe('auth transport headers', () => {
+    it('sends bearer token, audience, and issuer when runtime auth context is set', async () => {
+      api = await import('../src/lib/api')
+      api.setApiAuthContext({
+        bearerToken: 'token-123',
+        audience: 'mobile-app',
+        issuer: 'issuer-a',
+      })
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      })
+      await api.listTasks()
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+      const headers = init.headers as Record<string, string>
+      expect(headers.Authorization).toBe('Bearer token-123')
+      expect(headers['X-API-Audience']).toBe('mobile-app')
+      expect(headers['X-API-Issuer']).toBe('issuer-a')
     })
   })
 
@@ -184,6 +263,18 @@ describe('api', () => {
         status: 502,
       })
     })
+
+    it('stores machine-readable error code on ApiError', async () => {
+      api = await import('../src/lib/api')
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: 'task was modified concurrently; reload and retry', code: 'task_conflict' }),
+      })
+      const err = await api.listTasks().catch((e) => e)
+      expect(err).toBeInstanceOf(api.ApiError)
+      expect(err).toMatchObject({ status: 409, code: 'task_conflict' })
+    })
   })
 
   describe('ApiError', () => {
@@ -195,6 +286,20 @@ describe('api', () => {
       expect(err.status).toBe(404)
       expect(err.message).toBe('Not found')
       expect(err.name).toBe('ApiError')
+    })
+  })
+
+  describe('apiErrorMessage', () => {
+    it('maps known backend error codes to friendly copy', async () => {
+      const { ApiError, apiErrorMessage } = await import('../src/lib/api')
+      const err = new ApiError({ status: 409, message: 'raw', code: 'task_conflict' })
+      expect(apiErrorMessage(err)).toBe('The task changed on the server. Reload and retry.')
+    })
+
+    it('falls back to API message for unknown codes', async () => {
+      const { ApiError, apiErrorMessage } = await import('../src/lib/api')
+      const err = new ApiError({ status: 500, message: 'custom', code: 'unknown_code' })
+      expect(apiErrorMessage(err)).toBe('custom')
     })
   })
 })

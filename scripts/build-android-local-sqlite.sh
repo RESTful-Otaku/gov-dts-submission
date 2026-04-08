@@ -106,7 +106,8 @@ print_section "Frontend: install deps and tests"
 (cd "$FRONTEND" && bun run test && bun run check)
 
 print_section "Frontend: build web assets for local SQLite mode"
-(cd "$FRONTEND" && VITE_MOBILE_LOCAL_DB=true bun run build)
+gov_dts_export_vite_mobile_local_db_env
+(cd "$FRONTEND" && bun run build)
 
 print_section "Capacitor: sync native projects"
 (cd "$FRONTEND" && bunx cap sync android)

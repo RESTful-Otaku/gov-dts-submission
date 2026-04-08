@@ -3,11 +3,13 @@ name: Android Release
 on:
   push:
     tags:
-      - "v1.*.*"
+      - "v*.*.*"
   workflow_dispatch:
 
 permissions:
+  attestations: write
   contents: write
+  id-token: write
 
 jobs:
   release-android:
@@ -37,25 +39,13 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           VERSION_FILE="${{ steps.tag.outputs.version }}"
-          if [[ ! "$TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Expected tag format v1.x.x, got: $TAG"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected tag format vX.Y.Z, got: $TAG"
             exit 1
           fi
           if [[ "v${VERSION_FILE}" != "$TAG" ]]; then
             echo "VERSION mismatch: VERSION=${VERSION_FILE}, tag=${TAG}"
             exit 1
-          fi
-
-      - name: Create tag for manual dispatch
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists."
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
           fi
 
       - name: Set up Node
@@ -92,9 +82,24 @@ jobs:
           bun run check
           bun run test
 
+      - name: Configure Vite env for native mobile SQLite (SQLCipher)
+        shell: bash
+        env:
+          REPO_SECRET: ${{ secrets.VITE_MOBILE_DB_SECRET }}
+        run: |
+          set -euo pipefail
+          default="gov-dts-mobile-sqlcipher-local-dev-not-for-store"
+          echo "VITE_MOBILE_LOCAL_DB=true" >> "$GITHUB_ENV"
+          if [[ -n "${REPO_SECRET}" ]]; then
+            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${REPO_SECRET}" >> "$GITHUB_ENV"
+          else
+            printf 'VITE_MOBILE_DB_SECRET=%s\n' "${default}" >> "$GITHUB_ENV"
+            echo "::notice::Repository secret VITE_MOBILE_DB_SECRET is not set; using the public dev placeholder. Set the secret for a production-grade SQLCipher key."
+          fi
+
       - name: Build web assets (pre-production local DB mode)
         working-directory: frontend
-        run: VITE_MOBILE_LOCAL_DB=true bun run build
+        run: bun run build
 
       - name: Sync Capacitor Android
         working-directory: frontend
@@ -111,12 +116,27 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           SRC="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
           OUT="gov-case-tracker-android-${TAG}.apk"
+          SUM="${OUT}.sha256"
           if [[ ! -f "$SRC" ]]; then
             echo "Expected APK not found: $SRC"
             exit 1
           fi
           cp "$SRC" "$OUT"
+          sha256sum "$OUT" > "$SUM"
           echo "apk_name=$OUT" >> "$GITHUB_OUTPUT"
+          echo "apk_checksum=$SUM" >> "$GITHUB_OUTPUT"
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: android-source-sbom.spdx.json
+          format: spdx-json
+
+      - name: Attest Android artifact provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.artifact.outputs.apk_name }}
 
       - name: Create pre-release / upload Android artifact
         uses: softprops/action-gh-release@v2
@@ -124,10 +144,15 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: gov-case-tracker-${{ steps.tag.outputs.tag }}
           prerelease: true
-          files: ${{ steps.artifact.outputs.apk_name }}
+          files: |
+            ${{ steps.artifact.outputs.apk_name }}
+            ${{ steps.artifact.outputs.apk_checksum }}
+            android-source-sbom.spdx.json
           body: |
             Pre-production Android APK build for `${{ steps.tag.outputs.tag }}`.
 
             Included Android asset:
             - `${{ steps.artifact.outputs.apk_name }}`
+            - `${{ steps.artifact.outputs.apk_checksum }}`
+            - `android-source-sbom.spdx.json`
             - Source code archives (zip/tar.gz) generated automatically by GitHub Releases

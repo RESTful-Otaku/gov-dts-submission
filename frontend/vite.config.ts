@@ -2,6 +2,8 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
+const previewApiTarget = process.env.PREVIEW_API_PROXY ?? 'http://127.0.0.1:8080'
+
 // Always force the browser build of Svelte.
 export default defineConfig(() => ({
   plugins: [svelte()],
@@ -10,6 +12,15 @@ export default defineConfig(() => ({
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: {
+    // Playwright + `vite preview`: forward /api to the Go backend (same-origin as the UI).
+    proxy: {
+      '/api': {
+        target: previewApiTarget,
         changeOrigin: true,
       },
     },
@@ -32,6 +43,12 @@ export default defineConfig(() => ({
       reporter: ['text', 'json-summary'],
       include: ['src/**/*.{svelte,ts}'],
       exclude: ['src/**/*.d.ts', 'src/main.ts'],
+      thresholds: {
+        branches: 50,
+        functions: 55,
+        lines: 60,
+        statements: 60,
+      },
     },
   }
 }))
