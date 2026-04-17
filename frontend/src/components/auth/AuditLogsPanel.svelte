@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AuditLog, AuditLogsSortField, AuthUser } from '../../lib/api'
   import { UI_COPY } from '../../lib/app/copy'
+  import { formatDateTimeUK } from '../../lib/tasks/date'
   import { tableSortGlyph } from '../../lib/ui/tableSortGlyph'
 
   export let users: AuthUser[] = []
@@ -136,7 +137,7 @@
         {:else}
           {#each auditLogs as log (log.id)}
             <tr>
-              <td>{new Date(log.createdAt).toLocaleString()}</td>
+              <td>{formatDateTimeUK(log.createdAt)}</td>
               <td>{log.username}</td>
               <td>
                 <span class={actionBadgeClass(log.action)}>{actionLabel(log.action)}</span>

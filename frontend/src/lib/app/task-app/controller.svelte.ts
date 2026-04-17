@@ -48,7 +48,7 @@ import {
   shouldSeedBulkDeleteSelection,
 } from './onboardingRules'
 import { dueState as dueStateUtil } from '../../tasks/dueState'
-import { formatUKDateString, parseDateTimeUK, toDateTimePickerValue } from '../../tasks/date'
+import { formatDueFilterChipDate, formatUKDateString, parseDateTimeUK, toDateTimePickerValue } from '../../tasks/date'
 import {
   mergeColumnIntoTasks as mergeColumnIntoTasksUtil,
   tasksForColumn as tasksForColumnUtil,
@@ -368,8 +368,20 @@ export class TaskAppController {
     for (const tag of this.tagFilters) {
       chips.push({ id: `tag:${tag.toLowerCase()}`, kind: 'tag', label: `${UI_COPY.tasks.chipTagPrefix}: ${tag}` })
     }
-    if (this.filterFrom) chips.push({ id: 'from', kind: 'from', label: `${UI_COPY.tasks.chipDueFromPrefix}: ${this.filterFrom}` })
-    if (this.filterTo) chips.push({ id: 'to', kind: 'to', label: `${UI_COPY.tasks.chipDueToPrefix}: ${this.filterTo}` })
+    if (this.filterFrom) {
+      chips.push({
+        id: 'from',
+        kind: 'from',
+        label: `${UI_COPY.tasks.chipDueFromPrefix}: ${formatDueFilterChipDate(this.filterFrom)}`,
+      })
+    }
+    if (this.filterTo) {
+      chips.push({
+        id: 'to',
+        kind: 'to',
+        label: `${UI_COPY.tasks.chipDueToPrefix}: ${formatDueFilterChipDate(this.filterTo)}`,
+      })
+    }
     if (this.sortKey !== this.defaultSortKey || this.sortAscending !== this.defaultSortAscending) {
       const sortLabel = taskSortChipLabel(this.sortKey)
       chips.push({

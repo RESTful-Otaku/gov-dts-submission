@@ -76,5 +76,14 @@ describe('matchesFilters', () => {
     expect(matchesFilters(task, '', 'all', 'all', '', [], '', '27-03-2026')).toBe(true)
     expect(matchesFilters(task, '', 'all', 'all', '', [], '', '26-03-2026')).toBe(false)
   })
+
+  it('filters by from/to when boundaries use ordinal UK dates', () => {
+    const dueAt = new Date(2026, 2, 27, 10, 0, 0, 0).toISOString()
+    const task = makeTask({ id: 't1', dueAt })
+
+    expect(matchesFilters(task, '', 'all', 'all', '', [], '26th Mar 2026', '')).toBe(true)
+    expect(matchesFilters(task, '', 'all', 'all', '', [], '', '27th March 2026')).toBe(true)
+    expect(matchesFilters(task, '', 'all', 'all', '', [], '', '26th Mar 2026')).toBe(false)
+  })
 })
 

@@ -3,6 +3,7 @@
   import type { AuthUser, UserRole, UsersSortField } from '../../lib/api'
   import type { ListPageSize } from '../../lib/app/constants'
   import { setIndeterminate } from '../../lib/dom/setIndeterminate'
+  import { formatDateTimeUK } from '../../lib/tasks/date'
   import { tableSortGlyph } from '../../lib/ui/tableSortGlyph'
   import ListPagination from '../tasks/ListPagination.svelte'
 
@@ -217,8 +218,8 @@
                   />
                 </label>
               </td>
-              <td>{new Date(u.createdAt).toLocaleString()}</td>
-              <td>{new Date(u.updatedAt).toLocaleString()}</td>
+              <td>{formatDateTimeUK(u.createdAt)}</td>
+              <td>{formatDateTimeUK(u.updatedAt)}</td>
               <td>{u.firstName}</td>
               <td>{u.lastName}</td>
               <td>{u.username}</td>

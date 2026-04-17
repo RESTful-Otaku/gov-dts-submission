@@ -1,5 +1,5 @@
 import type { Task, TaskPriority, TaskStatus } from '../api'
-import { formatDate, parseUKDate } from './date'
+import { formatDate, parseDateInput } from './date'
 import { priorityLabel, statusLabel } from './taskMeta'
 
 export type StatusFilter = 'all' | TaskStatus
@@ -26,8 +26,8 @@ export function createTaskFilterPredicate(criteria: FilterCriteria): (taskItem: 
   const q = criteria.qRaw.trim().toLocaleLowerCase()
   const parts = q ? q.split(/\s+/).filter(Boolean) : []
   const ownerNorm = criteria.ownerQ.trim().toLocaleLowerCase()
-  const fromDateObj = criteria.from ? parseUKDate(criteria.from) : null
-  const toDateObj = criteria.to ? parseUKDate(criteria.to) : null
+  const fromDateObj = criteria.from ? parseDateInput(criteria.from) : null
+  const toDateObj = criteria.to ? parseDateInput(criteria.to) : null
   const fromDate = fromDateObj
     ? new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), fromDateObj.getDate())
     : null
