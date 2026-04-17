@@ -1,25 +1,25 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/svelte'
+import { render, waitFor } from '@testing-library/svelte'
+import userEvent from '@testing-library/user-event'
 import App from '../src/App.svelte'
 
+/** Normalise fetch() input to a pathname for routing mocks (handles absolute Request URLs in Vitest/jsdom). */
+function fetchPathname(input: RequestInfo | URL): string {
+  if (typeof input === 'string') {
+    return input.startsWith('http') ? new URL(input).pathname : input.split('?')[0]
+  }
+  if (input instanceof Request) {
+    return new URL(input.url).pathname
+  }
+  return new URL(input.href).pathname
+}
+
 describe('App.svelte', () => {
-  let originalAnimate: typeof Element.prototype.animate | undefined
+  let store: Map<string, string>
 
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    // jsdom does not implement Element.animate (Web Animations API). Svelte transitions use it.
-    originalAnimate = Element.prototype.animate
-    Element.prototype.animate = function () {
-      return {
-        cancel: () => {},
-        finish: () => {},
-        get finished() {
-          return Promise.resolve()
-        },
-      } as unknown as Animation
-    }
-    // Prevent tests from touching real localStorage or document font size between runs
-    const store = new Map<string, string>()
+    store = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => {
@@ -38,55 +38,108 @@ describe('App.svelte', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
-    if (originalAnimate !== undefined) {
-      Element.prototype.animate = originalAnimate
-    }
   })
 
   it('renders header and create task button', () => {
-    const { getByText } = render(App)
-    expect(getByText('Caseworker task manager')).toBeTruthy()
-    expect(getByText('Create task')).toBeTruthy()
+    const { getByRole } = render(App)
+    expect(getByRole('heading', { name: 'Caseworker task manager' })).toBeVisible()
+    // Visible label is "Create task"; accessible name is aria-label "Create a new task".
+    expect(getByRole('button', { name: 'Create a new task' })).toBeVisible()
   })
 
   it('toggles view mode between cards and list', async () => {
-    const { getByText } = render(App)
-    const cardsButton = getByText('Summary')
-    const listButton = getByText('List')
+    const user = userEvent.setup()
+    const { getByRole } = render(App)
+    const cardsButton = getByRole('button', { name: 'Summary' })
+    const listButton = getByRole('button', { name: 'List' })
 
-    // default is cards view
-    expect(cardsButton.classList.contains('selected')).toBe(true)
-    expect(listButton.classList.contains('selected')).toBe(false)
+    expect(cardsButton).toHaveClass('selected')
+    expect(listButton).not.toHaveClass('selected')
 
-    await fireEvent.click(listButton)
+    await user.click(listButton)
 
-    expect(listButton.classList.contains('selected')).toBe(true)
-    expect(cardsButton.classList.contains('selected')).toBe(false)
+    expect(listButton).toHaveClass('selected')
+    expect(cardsButton).not.toHaveClass('selected')
   })
 
   it('opens create modal from button', async () => {
-    const { getByText, queryByText } = render(App)
+    const user = userEvent.setup()
+    const { getByRole, queryByRole } = render(App)
 
-    expect(queryByText('Create a new task')).toBeNull()
-    const button = getByText('Create task')
+    expect(queryByRole('heading', { name: 'Create a new task' })).not.toBeInTheDocument()
+    await user.click(getByRole('button', { name: 'Create a new task' }))
 
-    await fireEvent.click(button)
-
-    expect(getByText('Create a new task')).toBeTruthy()
+    expect(getByRole('heading', { name: 'Create a new task' })).toBeVisible()
   })
 
   it('shows health banner when API is down', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      json: () => Promise.resolve({ error: 'Service unavailable' }),
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const path = fetchPathname(input)
+      if (path === '/api/ready' || path.endsWith('/api/ready')) {
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          json: () => Promise.resolve({ error: 'Service unavailable' }),
+        })
+      }
+      if (path === '/api/tasks' || path.endsWith('/api/tasks')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([]),
+        })
+      }
+      // Images and other assets: empty success (not JSON — callers use json() only on /api/*).
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.reject(new SyntaxError('not json')),
+      })
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { findByText } = render(App)
+    render(App)
 
-    const msg = await findByText('The service is currently unavailable.')
-    expect(msg).toBeTruthy()
+    await waitFor(
+      () => {
+        const el = document.querySelector('.health-banner')
+        expect(el).toBeTruthy()
+        expect(el!.textContent).toContain('The service is currently unavailable.')
+      },
+      { timeout: 3000 },
+    )
+  })
+
+  it('opens advanced filters panel from toggle', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const path = fetchPathname(input)
+      if (path === '/api/ready' || path.endsWith('/api/ready')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ status: 'ready' }),
+        })
+      }
+      if (path === '/api/tasks' || path.endsWith('/api/tasks')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([]),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.reject(new SyntaxError('not json')),
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getByRole } = render(App)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
+
+    await user.click(getByRole('button', { name: 'Toggle filters' }))
+    expect(getByRole('region', { name: 'Advanced filters and sorting' })).toBeVisible()
   })
 })
-

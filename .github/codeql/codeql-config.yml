@@ -1,0 +1,3 @@
+paths-ignore:
+  - frontend/storybook-static/**
+  - frontend/dist/**

@@ -2,6 +2,12 @@
 # Build, test, and run the iOS app on the iOS Simulator via Capacitor.
 # - Default mode: starts local Go API on a fixed port and points the app at it.
 # - Optional mode: `--local-sqlite` skips the API and uses on-device SQLite instead.
+#
+# iOS native deps use Swift Package Manager (App.xcodeproj + CapApp-SPM), not CocoaPods.
+# `bun install` runs postinstall (scripts/apply-ios-native-patches.mjs) so @capacitor-community/sqlite
+# has a valid Package.swift. On Apple Silicon, `cap run ios` typically targets an arm64 simulator,
+# which matches the SQLCipher xcframework; Intel Mac + x86_64 sim may fail to link — use an arm64
+# simulator or build with the same ARCHS/EXCLUDED_ARCHS flags as .github/workflows/mobile-builds.yml.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,10 +17,11 @@ FRONTEND="$ROOT/frontend"
 
 source "$SCRIPT_DIR/lib.sh"
 
-PM="npm"
-if command -v bun >/dev/null 2>&1; then
-  PM="bun"
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required for frontend builds (https://bun.sh)" >&2
+  exit 1
 fi
+PM="bun"
 
 ensure_macos_and_xcode() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -39,7 +46,7 @@ cleanup() {
     wait "$API_PID" 2>/dev/null || true
   fi
 }
-trap cleanup INT TERM
+trap cleanup EXIT INT TERM
 
 usage() {
   cat >&2 <<'EOF'
@@ -80,24 +87,28 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+install_frontend_deps() {
+  print_section "Frontend: bun install (postinstall applies iOS SPM patches)"
+  if [[ -f "$FRONTEND/bun.lock" ]]; then
+    (cd "$FRONTEND" && bun install --frozen-lockfile)
+  else
+    (cd "$FRONTEND" && bun install)
+  fi
+}
+
 run_tests() {
   print_section "Backend: tests"
   (cd "$BACKEND" && go test -v ./...)
 
   print_section "Frontend: check and build"
-  if [[ "$PM" == "bun" ]]; then
-    (cd "$FRONTEND" && bun install >/dev/null 2>&1 || true)
-    (cd "$FRONTEND" && bun run check && bun run build)
-  else
-    (cd "$FRONTEND" && npm ci 2>/dev/null || npm install)
-    (cd "$FRONTEND" && npm run check && npm run build)
-  fi
+  (cd "$FRONTEND" && bun run check && bun run test && bun run build)
 }
 
 build_web_assets() {
   print_section "Frontend: build for iOS Simulator"
   if (( LOCAL_SQLITE == 1 )); then
-    (cd "$FRONTEND" && VITE_MOBILE_LOCAL_DB=true ${PM} run build)
+    gov_dts_export_vite_mobile_local_db_env
+    (cd "$FRONTEND" && ${PM} run build)
   else
     # For iOS Simulator, `localhost` typically resolves to the host machine.
     (cd "$FRONTEND" && VITE_API_BASE="${API_BASE_URL}" ${PM} run build)
@@ -106,29 +117,37 @@ build_web_assets() {
 
 run_cap_sync() {
   print_section "Capacitor: sync iOS"
-  (cd "$FRONTEND" && npx cap sync ios)
+  # Regenerates ios/App/CapApp-SPM/Package.swift from installed plugins (SPM).
+  (cd "$FRONTEND" && bunx cap sync ios)
 }
 
 run_ios_simulator() {
   print_section "iOS: launching simulator app"
+  # Uses App.xcodeproj when CapApp-SPM is present (not App.xcworkspace / CocoaPods).
   # `cap run ios` will build and install; if the app is already present it will reinstall.
-  (cd "$FRONTEND" && npx cap run ios)
+  (cd "$FRONTEND" && bunx cap run ios)
 }
 
 start_backend_api() {
+  ensure_api_listen_port_for_run "$API_PORT" "API (backend for iOS)" || exit 1
+  if [[ "${GOV_DTS_REUSE_API_ON_PORT:-0}" == "1" ]]; then
+    ok "Using existing API at ${API_BASE_URL}"
+    return 0
+  fi
   print_section "Backend: starting API on :$API_PORT"
   (cd "$BACKEND" && HTTP_PORT="$API_PORT" go run ./cmd/api) &
   API_PID=$!
-  sleep 3
   if ! kill -0 "$API_PID" 2>/dev/null; then
     fail "API failed to start (port $API_PORT may be in use)."
     exit 1
   fi
+  wait_for_api_ready "http://127.0.0.1:${API_PORT}" 90 "iOS API" || exit 1
   ok "API running at ${API_BASE_URL}"
 }
 
 main() {
   ensure_macos_and_xcode
+  install_frontend_deps
   run_tests
 
   if (( LOCAL_SQLITE == 0 )); then

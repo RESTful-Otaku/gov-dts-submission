@@ -4,14 +4,45 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/j-m-harrison/dts-submission/internal/task"
 )
 
 // ErrNotFound is returned when a task is not found.
 var ErrNotFound = errors.New("task not found")
+
+// ErrConflict is returned when an update cannot be applied because the record
+// changed between read and write (optimistic concurrency conflict).
+var ErrConflict = errors.New("task update conflict")
+
+var (
+	beforeConditionalUpdateHookMu sync.Mutex
+	beforeConditionalUpdateHook   func()
+)
+
+func runBeforeConditionalUpdateHook() {
+	beforeConditionalUpdateHookMu.Lock()
+	hook := beforeConditionalUpdateHook
+	beforeConditionalUpdateHookMu.Unlock()
+	if hook != nil {
+		hook()
+	}
+}
+
+func setBeforeConditionalUpdateHookForTest(hook func()) func() {
+	beforeConditionalUpdateHookMu.Lock()
+	beforeConditionalUpdateHook = hook
+	beforeConditionalUpdateHookMu.Unlock()
+	return func() {
+		beforeConditionalUpdateHookMu.Lock()
+		beforeConditionalUpdateHook = nil
+		beforeConditionalUpdateHookMu.Unlock()
+	}
+}
 
 // Store defines the persistence port for tasks. It is intentionally small so
 // that different database backends (SQLite, Postgres, MariaDB, etc.) can
@@ -20,18 +51,28 @@ var ErrNotFound = errors.New("task not found")
 type Store interface {
 	CreateTask(ctx context.Context, in task.NewTaskInput) (*task.Task, error)
 	GetTask(ctx context.Context, id string) (*task.Task, error)
-	ListTasks(ctx context.Context) ([]*task.Task, error)
+	ListTasks(ctx context.Context, opts ListOptions) ([]*task.Task, error)
 	UpdateTaskStatus(ctx context.Context, id string, status task.Status) (*task.Task, error)
 	UpdateTask(ctx context.Context, id string, in *task.UpdateTaskInput) (*task.Task, error)
 	DeleteTask(ctx context.Context, id string) error
 }
 
-// NewStoreFromDB returns the Store implementation for the given *sql.DB.
-// The implementation is chosen from DB_DRIVER (pgx/postgres → PostgresStore,
-// mariadb → MariaDBStore, otherwise SQLiteStore) so that placeholders and SQL
-// match the connected database.
-func NewStoreFromDB(db *sql.DB) Store {
-	driver := strings.TrimSpace(strings.ToLower(os.Getenv("DB_DRIVER")))
+type ListOptions struct {
+	Limit  int
+	Offset int
+	Q      string
+	Status string
+	Priority string
+	Owner  string
+	Tag    string
+	Sort   string
+	Order  string
+}
+
+// NewStoreFromDBDriver returns the Store implementation for the given *sql.DB
+// and normalized database driver name.
+func NewStoreFromDBDriver(db *sql.DB, driver string) Store {
+	driver = strings.TrimSpace(strings.ToLower(driver))
 	switch driver {
 	case "pgx", "postgres":
 		return NewPostgresStore(db)
@@ -40,5 +81,20 @@ func NewStoreFromDB(db *sql.DB) Store {
 	default:
 		return NewSQLiteStore(db)
 	}
+}
+
+// NewStoreFromDB returns the Store implementation selected from DB_DRIVER.
+// Prefer NewStoreFromDBDriver in new code so store selection is explicit.
+func NewStoreFromDB(db *sql.DB) Store {
+	return NewStoreFromDBDriver(db, os.Getenv("DB_DRIVER"))
+}
+
+func allowDestructiveMigrations() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_DESTRUCTIVE_MIGRATIONS")))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+func destructiveMigrationBlockedError(backend string) error {
+	return fmt.Errorf("refusing destructive %s migration for legacy integer task IDs; set ALLOW_DESTRUCTIVE_MIGRATIONS=true to allow table drop", backend)
 }
 

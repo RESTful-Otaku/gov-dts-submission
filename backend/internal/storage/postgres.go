@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ func MigratePostgres(ctx context.Context, db *sql.DB) error {
 	var dataType string
 	row := db.QueryRowContext(ctx, "SELECT data_type FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='tasks' AND column_name='id'")
 	if err := row.Scan(&dataType); err == nil && dataType == "bigint" {
+		if !allowDestructiveMigrations() {
+			return destructiveMigrationBlockedError("postgres")
+		}
 		if _, err := db.ExecContext(ctx, "DROP TABLE tasks"); err != nil {
 			return err
 		}
@@ -43,6 +47,24 @@ CREATE TABLE IF NOT EXISTS tasks (
 	due_at TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL,
 	updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+	id UUID PRIMARY KEY,
+	email TEXT NOT NULL UNIQUE,
+	username TEXT NOT NULL UNIQUE,
+	first_name TEXT NOT NULL DEFAULT '',
+	last_name TEXT NOT NULL DEFAULT '',
+	password_hash TEXT NOT NULL,
+	role TEXT NOT NULL DEFAULT 'viewer',
+	created_at TIMESTAMPTZ NOT NULL,
+	updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+	id UUID PRIMARY KEY,
+	user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	token_hash TEXT NOT NULL UNIQUE,
+	expires_at TIMESTAMPTZ NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL
 );
 `
 	_, err := db.ExecContext(ctx, q)
@@ -98,7 +120,10 @@ func (s *PostgresStore) GetTask(ctx context.Context, id string) (*task.Task, err
 	if desc.Valid {
 		t.Description = &desc.String
 	}
-	tags, _ := ParseTagsJSON(tagsRaw)
+	tags, err := ParseTagsJSON(tagsRaw)
+	if err != nil {
+		return nil, err
+	}
 	t.Tags = tags
 	t.DueAt = t.DueAt.UTC()
 	t.CreatedAt = t.CreatedAt.UTC()
@@ -106,11 +131,64 @@ func (s *PostgresStore) GetTask(ctx context.Context, id string) (*task.Task, err
 	return &t, nil
 }
 
-func (s *PostgresStore) ListTasks(ctx context.Context) ([]*task.Task, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *PostgresStore) ListTasks(ctx context.Context, opts ListOptions) ([]*task.Task, error) {
+	q := `
 		SELECT id, title, description, status, priority, owner, tags, due_at, created_at, updated_at
-		FROM tasks ORDER BY due_at ASC, id ASC
-	`)
+		FROM tasks
+	`
+	conds := make([]string, 0, 5)
+	args := make([]any, 0, 8)
+	nextArg := func(v any) string {
+		args = append(args, v)
+		return "$" + strconv.Itoa(len(args))
+	}
+	if opts.Status != "" {
+		conds = append(conds, "LOWER(status) = "+nextArg(opts.Status))
+	}
+	if opts.Priority != "" {
+		conds = append(conds, "LOWER(priority) = "+nextArg(opts.Priority))
+	}
+	if opts.Owner != "" {
+		conds = append(conds, "LOWER(owner) LIKE "+nextArg("%"+opts.Owner+"%"))
+	}
+	if opts.Tag != "" {
+		conds = append(conds, "LOWER(tags) LIKE "+nextArg("%"+opts.Tag+"%"))
+	}
+	if opts.Q != "" {
+		conds = append(conds, "LOWER(title || ' ' || COALESCE(description,'') || ' ' || status || ' ' || priority || ' ' || owner || ' ' || tags) LIKE "+nextArg("%"+opts.Q+"%"))
+	}
+	if len(conds) > 0 {
+		q += " WHERE " + strings.Join(conds, " AND ")
+	}
+	switch opts.Sort {
+	case "title":
+		q += " ORDER BY LOWER(title)"
+	case "priority":
+		q += " ORDER BY CASE priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 2 END"
+	case "owner":
+		q += " ORDER BY LOWER(owner)"
+	case "status":
+		q += " ORDER BY CASE LOWER(status) WHEN 'todo' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'done' THEN 3 ELSE 4 END"
+	case "tags":
+		q += " ORDER BY LOWER(tags)"
+	case "created":
+		q += " ORDER BY created_at"
+	default:
+		q += " ORDER BY due_at"
+	}
+	if opts.Order == "desc" {
+		q += " DESC, id DESC"
+	} else {
+		q += " ASC, id ASC"
+	}
+	var rows *sql.Rows
+	var err error
+	if opts.Limit > 0 {
+		q += " LIMIT " + nextArg(opts.Limit) + " OFFSET " + nextArg(max(0, opts.Offset))
+		rows, err = s.db.QueryContext(ctx, q, args...)
+	} else {
+		rows, err = s.db.QueryContext(ctx, q, args...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +204,10 @@ func (s *PostgresStore) ListTasks(ctx context.Context) ([]*task.Task, error) {
 		if desc.Valid {
 			t.Description = &desc.String
 		}
-		tags, _ := ParseTagsJSON(tagsRaw)
+		tags, err := ParseTagsJSON(tagsRaw)
+		if err != nil {
+			return nil, err
+		}
 		t.Tags = tags
 		t.DueAt = t.DueAt.UTC()
 		t.CreatedAt = t.CreatedAt.UTC()
@@ -140,13 +221,21 @@ func (s *PostgresStore) ListTasks(ctx context.Context) ([]*task.Task, error) {
 }
 
 func (s *PostgresStore) UpdateTaskStatus(ctx context.Context, id string, status task.Status) (*task.Task, error) {
+	current, err := s.GetTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3`, status, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3 AND updated_at = $4`, status, now, id, current.UpdatedAt.UTC())
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }
@@ -183,14 +272,18 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, id string, in *task.Upda
 	if err != nil {
 		return nil, err
 	}
+	runBeforeConditionalUpdateHook()
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = $1, description = $2, status = $3, priority = $4, tags = $5, updated_at = $6 WHERE id = $7`,
-		title, desc, status, priority, tagsJSON, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = $1, description = $2, status = $3, priority = $4, tags = $5, updated_at = $6 WHERE id = $7 AND updated_at = $8`,
+		title, desc, status, priority, tagsJSON, now, id, current.UpdatedAt.UTC())
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, ErrNotFound
+		if _, getErr := s.GetTask(ctx, id); errors.Is(getErr, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, ErrConflict
 	}
 	return s.GetTask(ctx, id)
 }

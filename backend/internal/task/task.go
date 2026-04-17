@@ -98,7 +98,7 @@ var (
 
 // ValidateNewTask ensures incoming data for creating a task is valid.
 func ValidateNewTask(now time.Time, in NewTaskInput) error {
-	if in.Title == "" {
+	if strings.TrimSpace(in.Title) == "" {
 		return ErrTitleRequired
 	}
 	if in.Status == "" {

@@ -10,6 +10,11 @@ APK_PATH="$FRONTEND/android/app/build/outputs/apk/debug/app-debug.apk"
 
 source "$SCRIPT_DIR/lib.sh"
 
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required for frontend builds (https://bun.sh)" >&2
+  exit 1
+fi
+
 find_java17_or_21() {
   local java_home=""
   if [[ -n "${JAVA_HOME:-}" ]] && [[ -x "${JAVA_HOME}/bin/java" ]]; then
@@ -37,17 +42,90 @@ fi
 export JAVA_HOME="$ANDROID_JAVA_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
 
+ANDROID_DIR="$FRONTEND/android"
+LOCAL_PROPS="$ANDROID_DIR/local.properties"
+
+android_sdk_dir_looks_valid() {
+  local d="${1:-}"
+  [[ -n "$d" && -d "$d" ]] || return 1
+  [[ -d "$d/platform-tools" || -d "$d/build-tools" || -d "$d/platforms" ]]
+}
+
+read_sdk_dir_from_local_properties() {
+  [[ -f "$LOCAL_PROPS" ]] || return 1
+  local line
+  line="$(grep -E '^sdk\.dir=' "$LOCAL_PROPS" 2>/dev/null | tail -1)"
+  [[ -n "$line" ]] || return 1
+  local raw="${line#sdk.dir=}"
+  raw="${raw%$'\r'}"
+  # Unescape Windows-style paths from Android Studio (sdk.dir=C\:\\Users\\...)
+  raw="${raw//\\\\/\\}"
+  printf '%s' "$raw"
+}
+
+resolve_android_sdk() {
+  if android_sdk_dir_looks_valid "${ANDROID_HOME:-}"; then
+    printf '%s' "$ANDROID_HOME"
+    return 0
+  fi
+  if android_sdk_dir_looks_valid "${ANDROID_SDK_ROOT:-}"; then
+    printf '%s' "$ANDROID_SDK_ROOT"
+    return 0
+  fi
+  local from_props
+  if from_props="$(read_sdk_dir_from_local_properties)" && android_sdk_dir_looks_valid "$from_props"; then
+    printf '%s' "$from_props"
+    return 0
+  fi
+  local cand
+  for cand in "$HOME/Android/Sdk" "$HOME/Library/Android/sdk" /opt/android-sdk; do
+    if android_sdk_dir_looks_valid "$cand"; then
+      printf '%s' "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_local_properties_sdk_dir() {
+  local sdk="$1"
+  if [[ -f "$LOCAL_PROPS" ]] && grep -qE '^sdk\.dir=' "$LOCAL_PROPS"; then
+    return 0
+  fi
+  mkdir -p "$ANDROID_DIR"
+  if [[ -f "$LOCAL_PROPS" ]]; then
+    printf '\nsdk.dir=%s\n' "$sdk" >>"$LOCAL_PROPS"
+  else
+    printf 'sdk.dir=%s\n' "$sdk" >"$LOCAL_PROPS"
+  fi
+  info "Wrote sdk.dir to $LOCAL_PROPS (gitignored)."
+}
+
 print_section "Frontend: install deps and tests"
-(cd "$FRONTEND" && npm ci 2>/dev/null || npm install)
-(cd "$FRONTEND" && npm run test && npm run check)
+(cd "$FRONTEND" && bun install --frozen-lockfile 2>/dev/null || bun install)
+(cd "$FRONTEND" && bun run test && bun run check)
 
 print_section "Frontend: build web assets for local SQLite mode"
-(cd "$FRONTEND" && VITE_MOBILE_LOCAL_DB=true npm run build)
+gov_dts_export_vite_mobile_local_db_env
+(cd "$FRONTEND" && bun run build)
 
 print_section "Capacitor: sync native projects"
-(cd "$FRONTEND" && npx cap sync android)
+(cd "$FRONTEND" && bunx cap sync android)
 
 print_section "Android: build debug APK"
+if ! ANDROID_SDK_DIR="$(resolve_android_sdk)"; then
+  fail "Android SDK not found (Gradle needs ANDROID_HOME or sdk.dir in local.properties)."
+  info "Typical install: Android Studio → SDK at ~/Android/Sdk"
+  info "Then either: export ANDROID_HOME=\$HOME/Android/Sdk"
+  info "Or add one line to $LOCAL_PROPS:"
+  info "  sdk.dir=/path/to/Android/Sdk"
+  info "Arch package hint: android-sdk (set ANDROID_HOME to the package SDK path)."
+  exit 1
+fi
+export ANDROID_HOME="$ANDROID_SDK_DIR"
+export ANDROID_SDK_ROOT="$ANDROID_SDK_DIR"
+ensure_local_properties_sdk_dir "$ANDROID_SDK_DIR"
+info "Using Android SDK: $ANDROID_SDK_DIR"
 (cd "$FRONTEND/android" && ./gradlew assembleDebug)
 
 if [[ ! -f "$APK_PATH" ]]; then

@@ -1,0 +1,95 @@
+/*
+ * Cross-device layout: phones (all typical widths), high-DPI Android/iOS WebViews, and foldables.
+ * Goals: no accidental text inflation, no vw/layout blowout, fluid type where it helps.
+ */
+
+html {
+  /* Prevent WebKit/Chromium “helpful” font boosting that varies by device & OS font scale. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  width: 100%;
+}
+
+/*
+ * App-wide safety rail for touch devices, including landscape phones where CSS width can exceed 768px.
+ * This guarantees top/bottom breathing room from notches, status bars, home indicators and rounded corners.
+ */
+@media (hover: none) and (pointer: coarse) and (max-width: 1024px) {
+  body #app {
+    padding-top: max(1.5rem, calc(env(safe-area-inset-top, 0px) + 1.25rem)) !important;
+    padding-bottom: max(1.85rem, calc(env(safe-area-inset-bottom, 0px) + 1.35rem)) !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+/* Dynamic viewport avoids classic 100vw > innerWidth overflow on some mobile browsers. */
+@supports (width: 100dvw) {
+  @media (max-width: 768px) {
+    .app-sticky-top,
+    .task-controls-wrap {
+      width: 100dvw;
+      max-width: 100dvw;
+      margin-left: calc(50% - 50dvw);
+      margin-right: calc(50% - 50dvw);
+    }
+
+    .modal-backdrop .modal.modal--delete {
+      max-width: calc(
+        100dvw - 1.5rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)
+      );
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    /* Allow flex/grid children to shrink instead of forcing horizontal scroll on edge widths. */
+    min-width: 0;
+  }
+
+  /*
+   * Clip horizontal overflow at the root without reintroducing sticky/100vw issues on body.
+   * (Prefer clip over hidden: still aggressive but avoids scrollbar width quirks.)
+   */
+  html {
+    overflow-x: clip;
+  }
+
+  .app {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Fluid title: reads well from small iPhone SE width up to large Pro / Pixel widths. */
+  .app-header h1 {
+    font-size: clamp(1.05rem, 2.8vw + 0.85rem, 1.45rem);
+  }
+
+  .app-header p {
+    font-size: clamp(0.78rem, 0.6vw + 0.72rem, 0.9rem);
+  }
+}
+
+/*
+ * Foldables & small tablets in portrait: keep content from feeling “blown up” when the
+ * breakpoint is still “mobile” but the logical width is medium-sized.
+ */
+@media (min-width: 480px) and (max-width: 768px) {
+  :root {
+    --mobile-inline-gutter: max(0.65rem, env(safe-area-inset-left, 0px));
+    --mobile-inline-gutter-right: max(0.65rem, env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Large phones just under the “tablet” range (e.g. Pro Max, Ultra): slightly roomier rails. */
+@media (min-width: 412px) and (max-width: 768px) {
+  :root {
+    --mobile-inline-gutter: max(0.7rem, env(safe-area-inset-left, 0px));
+    --mobile-inline-gutter-right: max(0.7rem, env(safe-area-inset-right, 0px));
+  }
+}
