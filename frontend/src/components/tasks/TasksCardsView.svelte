@@ -39,7 +39,6 @@
   let observer: IntersectionObserver | null = null
   let observedSentinel: HTMLDivElement | null = null
   let visibleSignature = ''
-  let hasUserScrolled = false
   let pendingLoad = false
   let pendingTimer: ReturnType<typeof setTimeout> | null = null
   $: visibleTaskById = new Map(visibleTasks.map((t) => [t.id, t]))
@@ -48,7 +47,6 @@
   $: if (nextSignature !== visibleSignature) {
     visibleSignature = nextSignature
     renderLimit = Math.min(visibleTasks.length, INITIAL_BATCH)
-    hasUserScrolled = false
     pendingLoad = false
     if (pendingTimer) {
       clearTimeout(pendingTimer)
@@ -80,21 +78,14 @@
       renderLimit = visibleTasks.length
       return
     }
-    const onScroll = () => {
-      hasUserScrolled = true
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-
     observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return
-        if (!hasUserScrolled) return
         loadMore()
       },
       { rootMargin: '120px 0px' },
     )
     return () => {
-      window.removeEventListener('scroll', onScroll)
       if (pendingTimer) {
         clearTimeout(pendingTimer)
         pendingTimer = null
