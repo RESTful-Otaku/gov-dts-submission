@@ -85,11 +85,16 @@
       },
       { rootMargin: '120px 0px' },
     )
+
+    const onScrollFallback = () => loadMore()
+    window.addEventListener('scroll', onScrollFallback, { passive: true })
+
     return () => {
       if (pendingTimer) {
         clearTimeout(pendingTimer)
         pendingTimer = null
       }
+      window.removeEventListener('scroll', onScrollFallback)
       observer?.disconnect()
       observer = null
       observedSentinel = null
