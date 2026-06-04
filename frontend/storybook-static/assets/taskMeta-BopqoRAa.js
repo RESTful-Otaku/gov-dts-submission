@@ -1,0 +1,1 @@
+const l=[{value:"todo",label:"To do"},{value:"in_progress",label:"In progress"},{value:"done",label:"Done"}],e=[{value:"low",label:"Low"},{value:"normal",label:"Normal"},{value:"high",label:"High"},{value:"urgent",label:"Urgent"}];export{e as P,l as S};

@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 ARG API_BINARY=api
 
@@ -17,7 +17,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /bin/api 
 FROM alpine:3.20
 
 # Runtime lib for sqlite when using DB_DRIVER=sqlite3
-RUN apk add --no-cache ca-certificates sqlite-libs && addgroup -S app && adduser -S app -G app
+RUN apk add --no-cache ca-certificates sqlite-libs wget && addgroup -S app && adduser -S app -G app
 
 USER app
 WORKDIR /app

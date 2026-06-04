@@ -1,0 +1,93 @@
+/* Svelty-picker: theme variables and popup chrome (depends on tokens/colors). */
+
+:root {
+  --sdt-bg-main: var(--color-surface);
+  --sdt-color: var(--color-text);
+  --sdt-wrap-shadow: 0 4px 12px rgba(11, 12, 12, 0.12);
+  --sdt-shadow-color: var(--color-border);
+  --sdt-radius: 0.5rem;
+  --sdt-bg-selected: var(--color-accent);
+  --sdt-today-color: #ffffff;
+  --sdt-today-bg: var(--color-accent);
+  --sdt-clear-color: var(--color-danger);
+  --sdt-clear-bg: transparent;
+  --sdt-clear-hover-bg: var(--color-danger);
+  --sdt-clear-hover-color: #ffffff;
+  --sdt-header-color: var(--color-text);
+  --sdt-header-btn-bg-hover: var(--color-bg-subtle);
+  --sdt-table-bg: transparent;
+  --sdt-table-data-bg-hover: var(--color-bg-subtle);
+  --sdt-table-selected-bg: var(--color-accent);
+  --sdt-color-selected: #ffffff;
+  --sdt-table-today-indicator: var(--color-accent);
+  --sdt-table-disabled-date: var(--color-muted);
+  --sdt-table-disabled-date-bg: var(--color-bg-subtle);
+  --sdt-clock-bg: var(--color-bg-subtle);
+  --sdt-clock-selected-bg: var(--color-accent);
+  --sdt-clock-time-bg: transparent;
+  --sdt-clock-color: var(--color-text);
+  --sdt-clock-time-bg-hover: var(--color-bg-subtle);
+  --sdt-clock-color-hover: var(--color-text);
+  --sdt-clock-disabled: var(--color-muted);
+  --sdt-clock-disabled-bg: var(--color-bg-subtle);
+}
+
+[data-theme='dark'] {
+  --sdt-wrap-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.sdt-calendar-wrap {
+  font-family: inherit;
+  padding: 0.75rem;
+}
+
+.sdt-input-wrap {
+  border: none !important;
+}
+
+.sdt-action-btn,
+.sdt-today-btn,
+.sdt-clear-btn {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.55rem 1rem;
+  border-radius: 0.25rem;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.sdt-today-btn:hover:not([disabled]),
+.sdt-today-btn:focus,
+.sdt-today-btn:active {
+  background-color: var(--color-hover) !important;
+  color: #ffffff !important;
+}
+
+.sdt-clear-btn:hover:not([disabled]),
+.sdt-clear-btn:focus,
+.sdt-clear-btn:active:not([disabled]) {
+  background-color: var(--color-danger) !important;
+  color: #ffffff !important;
+}
+
+.sdt-thead-nav .std-btn,
+.sdt-time-btn,
+.std-btn {
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+.std-btn:hover:not([disabled]) {
+  background-color: var(--color-bg-subtle) !important;
+}
+
+.is-selected .std-btn,
+.is-selected.in-range .std-btn {
+  background-color: var(--color-accent) !important;
+  color: #ffffff !important;
+}
+
+.sdt-time-head,
+.sdt-time-figure {
+  color: var(--color-text);
+}

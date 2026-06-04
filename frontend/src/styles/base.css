@@ -1,0 +1,190 @@
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+:root {
+  --app-safe-top: max(1.5rem, calc(env(safe-area-inset-top, 0px) + 1.25rem));
+  --app-safe-bottom: max(1.85rem, calc(env(safe-area-inset-bottom, 0px) + 1.35rem));
+  --app-safe-left: max(0.55rem, env(safe-area-inset-left, 0px));
+  --app-safe-right: max(0.55rem, env(safe-area-inset-right, 0px));
+  /* Sticky chrome: collapsing the GOV.UK / title / menu row (scroll or mobile expanded search). */
+  --sticky-chrome-collapse-dur: 0.38s;
+  --sticky-chrome-collapse-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Accessibility: explicit reduced motion mode + OS preference fallback. */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) *,
+  :root:not([data-motion='full']) *::before,
+  :root:not([data-motion='full']) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+a {
+  color: var(--color-link);
+  text-decoration: underline;
+}
+
+#app {
+  /* Sticky chrome uses the same inset as this padding so the header does not jump flush to the viewport when scrolling. */
+  --app-chrome-top-offset: 2.5rem;
+  max-width: min(94vw, 1720px);
+  margin: 0 auto;
+  padding: 2.5rem 2rem 3rem;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  body #app {
+    --app-chrome-top-offset: var(--app-safe-top);
+    padding-top: var(--app-safe-top) !important;
+    padding-bottom: var(--app-safe-bottom) !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+/*
+ * Header slot: 1fr ↔ 0fr so brand + menu hide smoothly while controls + filters stay (all viewports).
+ * .app-sticky-top--chrome-collapsed is toggled from scroll; .app-sticky-top--mobile-search-open from UI.
+ */
+.app-sticky-top__header-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+  /* Critical: flex items default to min-height:auto, which blocks 0fr from truly collapsing. */
+  min-height: 0;
+  transition: grid-template-rows var(--sticky-chrome-collapse-dur) var(--sticky-chrome-collapse-ease);
+}
+
+.app-sticky-top__header-inner {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-sticky-top--chrome-collapsed .app-sticky-top__header-slot,
+.app-sticky-top--mobile-search-open .app-sticky-top__header-slot {
+  grid-template-rows: 0fr;
+  overflow: hidden;
+}
+
+/* Parent .app-sticky-top gap supplies spacing; avoid doubling with panel margin. */
+.app-sticky-top .filters-panel {
+  margin-top: 0;
+}
+
+/* Keep header row aligned to the same desktop rails as task controls. */
+@media (min-width: 769px) {
+  .app-header {
+    padding-left: 1.75rem;
+    padding-right: 1.75rem;
+    box-sizing: border-box;
+  }
+}
+
+.app-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.9rem;
+  letter-spacing: 0;
+}
+
+.app-header p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.app-header-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+.app-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.app-header-top .app-header-brand {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-header-brand {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.govuk-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.govuk-logo__crest {
+  width: 80px;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+
+.govuk-logo__text {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.app-header-theme {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.theme-switch,
+.font-size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+

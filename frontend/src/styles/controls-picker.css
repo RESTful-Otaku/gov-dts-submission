@@ -1,0 +1,328 @@
+/* Task toolbar, search field, filters panel, and filter tag pills (desktop defaults). */
+
+.task-controls-wrap {
+  /* Wrapper allows mobile full-bleed without affecting desktop */
+}
+
+.task-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-left: 1.75rem;
+  padding-right: 1.75rem;
+  box-sizing: border-box;
+}
+
+.task-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem 1.75rem 0;
+}
+
+.task-active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.task-controls-left {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Admin Tasks / Users / Audit toggle: full width under mobile toolbar row */
+.task-controls-admin-mobile {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-top: 0.35rem;
+}
+
+.task-controls-admin-mobile .admin-main-toggle {
+  justify-content: flex-start;
+}
+
+.task-controls-toolbar-divider {
+  align-self: stretch;
+  width: 3px;
+  min-height: 2rem;
+  margin: 0 0.2rem;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--color-border),
+    var(--color-accent-soft, rgba(29, 112, 184, 0.35)),
+    var(--color-border),
+    transparent
+  );
+  flex-shrink: 0;
+}
+
+.task-controls-admin-mobile--divided {
+  border-top: 2px solid var(--color-border);
+  margin-top: 0.35rem;
+  padding-top: 0.55rem;
+  box-shadow: inset 0 1px 0 var(--color-accent-soft, rgba(29, 112, 184, 0.2));
+}
+
+/*
+ * Keep filter / back-to-top / menu on the viewport right even when .task-controls wraps:
+ * without margin-left: auto the right cluster is the sole item on line 2 and aligns to the start.
+ */
+.task-controls-right {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Collapsed sticky chrome: jump to top without competing with mobile expanded search (hidden via props). */
+.btn-back-to-top {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.65rem;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.btn-back-to-top:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.search-toggle-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  min-height: 2.25rem;
+  padding: 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.search-toggle-btn .search-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.search-wrapper--expanded {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-close-btn {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  background: transparent;
+  color: var(--color-muted);
+  border: none;
+  border-radius: 4px;
+}
+
+.search-close-btn:hover {
+  color: var(--color-text);
+  background-color: var(--color-bg-subtle);
+}
+
+.filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.saved-views-controls {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.saved-views-controls > label {
+  min-width: 12rem;
+}
+
+/* Full-width row below status / priority / owner / tags selects */
+.filter-applied-tags-row {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.filter-applied-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  width: 100%;
+}
+
+.filter-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: 100%;
+  padding: 0.2rem 0.15rem 0.2rem 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  background-color: var(--color-accent-soft);
+  color: var(--color-text);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+}
+
+.filter-tag-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
+.filter-tag-pill-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.filter-tag-pill-remove:hover {
+  background-color: var(--color-bg-subtle);
+  color: var(--color-danger);
+}
+
+.filter-tag-pill-remove:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.search-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+}
+
+.search-input {
+  min-width: 16rem;
+  border: none;
+  padding: 0.35rem 0;
+}
+
+.search-input:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 0;
+}
+
+.search-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  position: relative;
+}
+
+.search-icon::after {
+  content: '';
+  position: absolute;
+  width: 0.5rem;
+  height: 2px;
+  background-color: currentColor;
+  border-radius: 999px;
+  transform: rotate(45deg);
+  right: -0.2rem;
+  bottom: -0.1rem;
+}
+
+.date-range {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.filters-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1.25rem 1rem;
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-bg-subtle);
+  display: flex;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.btn-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  min-width: 2.5rem;
+  padding: 0.5rem 0.65rem;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.filter-icon {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 9px solid currentColor;
+  position: relative;
+}
+
+.filter-icon::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 7px;
+  background-color: currentColor;
+  top: -1px;
+  left: -1px;
+  right: 0;
+  margin-inline: auto;
+}

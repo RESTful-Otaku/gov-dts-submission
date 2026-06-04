@@ -1,0 +1,251 @@
+/* Global forms, primary buttons, view mode and theme chrome (all viewports). */
+
+.sort-controls {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.sort-direction {
+  padding-inline: 0.7rem;
+}
+
+.btn-clear-filters {
+  background: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.btn-clear-filters:hover {
+  background-color: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+
+.btn-clear-filters--toolbar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.clear-filters-label--short {
+  display: none;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.field {
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.required {
+  color: #b91c1c;
+  margin-left: 0.15rem;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: var(--color-text);
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(29, 112, 184, 0.25);
+  background-color: var(--color-surface);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+button {
+  border: 1px solid transparent;
+  padding: 0.55rem 1.3rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: var(--color-accent);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition:
+    box-shadow 150ms ease,
+    transform 100ms ease,
+    filter 150ms ease,
+    background 150ms ease;
+}
+
+button:hover {
+  background-color: var(--color-hover);
+}
+
+button:active {
+  background-color: var(--color-active);
+}
+
+button.danger {
+  background-color: var(--color-danger);
+}
+
+.view-toggle,
+.font-size-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.control-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin-right: 0.25rem;
+}
+
+.view-toggle button,
+.font-size-buttons button {
+  padding-inline: 0.9rem;
+  background-color: transparent;
+  color: var(--color-text);
+}
+
+.view-toggle button.selected,
+.font-size-buttons button.selected {
+  background-color: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.theme-toggle-switch {
+  background-color: transparent;
+  padding: 0.2rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Icon toggle: no primary-button hover/active fill or focus chrome (track already shows state). */
+button.theme-toggle-switch:hover,
+button.theme-toggle-switch:active {
+  background-color: transparent;
+  filter: none;
+}
+
+button.theme-toggle-switch:focus,
+button.theme-toggle-switch:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.btn-icon-compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.btn-icon-compact__icon {
+  font-size: 0.92em;
+  line-height: 1;
+}
+
+:root[data-density='compact'] .btn-icon-compact {
+  gap: 0.32rem;
+}
+
+:root[data-density='compact'] .btn-icon-compact__label {
+  display: none;
+}
+
+.theme-toggle-track {
+  width: 38px;
+  height: 22px;
+  background-color: var(--color-accent-soft);
+  position: relative;
+  display: inline-block;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background-color: var(--color-accent);
+  transition: transform 150ms ease;
+}
+
+.theme-toggle-switch.is-dark .theme-toggle-thumb {
+  transform: translateX(16px);
+}
+
+.theme-toggle-icons {
+  display: flex;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.theme-icon {
+  color: var(--color-muted);
+}
+
+.theme-toggle-switch.is-light .theme-icon--day,
+.theme-toggle-switch.is-dark .theme-icon--night {
+  font-weight: 600;
+  color: var(--color-text);
+}

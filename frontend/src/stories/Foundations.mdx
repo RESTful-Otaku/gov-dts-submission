@@ -1,0 +1,25 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+
+<Meta title="Foundations/App shell" />
+
+# App shell in Storybook
+
+Stories load the same global styles as production (`src/styles/index.css`).
+
+## Theme and text size
+
+Use the **Theme** and **Text size** controls in the Storybook toolbar (top). They set:
+
+- `document.documentElement.dataset.theme` — drives `[data-theme='dark']` CSS variables (same as the live app).
+- `document.documentElement.style.fontSize` — six-step scale: `14px`, `15px`, `16px`, `18px`, `20px`, `22px`.
+
+Storybook’s default **Backgrounds** addon is disabled so it does not fight these tokens.
+
+## Component behaviour
+
+- **Layout / AppHeader** uses an interactive wrapper so the header’s theme and text-size buttons update the canvas, like the real app.
+- Most other stories inherit appearance from the toolbar only (no extra props). Switch theme or text size to review contrast, spacing, and typography across task views, filters, and modals.
+
+## What Storybook does not run
+
+Storybook does not execute API calls, routing, or Capacitor unless a story mocks them. Use **Vitest** and **Playwright** for end-to-end behaviour; use Storybook for visual states and a11y review with the **Accessibility** addon.

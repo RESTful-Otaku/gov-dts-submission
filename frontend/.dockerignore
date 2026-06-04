@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.git
+android
+ios
+e2e
+test-results
+.storybook
+storybook-static
+*.md
+.vite

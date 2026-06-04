@@ -1,0 +1,788 @@
+@media (max-width: 768px) {
+  :root {
+    /* Shared mobile horizontal gutter so header + toolbar stay perfectly aligned. */
+    --mobile-inline-gutter: max(0.55rem, env(safe-area-inset-left, 0px));
+    --mobile-inline-gutter-right: max(0.55rem, env(safe-area-inset-right, 0px));
+    --mobile-menu-top-offset: 1.12rem;
+    /* One timing curve for header ↔ expanded search (avoids stutter from mismatched durations). */
+    --mobile-chrome-dur: 0.38s;
+    --mobile-chrome-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /*
+   * Intentionally no overflow-x: hidden on body – it would clip the task-controls
+   * breakout (100vw). If horizontal scroll appears elsewhere, contain overflow on
+   * that element instead.
+   */
+
+  /* Force root to full width so nothing constrains the controls row (wins over base #app) */
+  body #app {
+    /*
+     * Always add space below the status bar / notch / Dynamic Island / punch-hole.
+     * constant() = legacy iOS 11; env() = modern iOS & supporting WebViews (with viewport-fit=cover).
+     * Do not use max(0.5rem, inset) alone — when inset is 0 (some Android WebViews), that left only ~8px.
+     */
+    /* Ensure a generous minimum inset even when safe-area env values are 0. */
+    padding-top: max(1.5rem, calc(constant(safe-area-inset-top) + 1.25rem)) !important;
+    padding-top: max(1.5rem, calc(env(safe-area-inset-top, 0px) + 1.25rem)) !important;
+    padding-bottom: max(1.85rem, calc(constant(safe-area-inset-bottom) + 1.35rem)) !important;
+    padding-bottom: max(1.85rem, calc(env(safe-area-inset-bottom, 0px) + 1.35rem)) !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .app {
+    gap: 1.75rem;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /*
+   * Sticky chrome: keep header + task controls (create / search / filter) visible while
+   * scrolling the task list. Top offset matches #app padding-top so behaviour stays
+   * consistent with the initial “comfort” gap below the notch.
+   *
+   * ::before masks the viewport band above the sticky block (same height as #app
+   * padding-top) so list/filter content does not scroll visibly through the notch area.
+   */
+  .app-sticky-top {
+    position: sticky;
+    top: var(--app-safe-top);
+    z-index: 60;
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    /* Inner rows (.app-header and .task-controls) own horizontal rails. */
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0.65rem;
+    box-sizing: border-box;
+    background-color: var(--color-bg);
+    background-image: linear-gradient(var(--color-bg), var(--color-bg));
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    transition:
+      gap var(--mobile-chrome-dur) var(--mobile-chrome-ease),
+      padding-bottom var(--mobile-chrome-dur) var(--mobile-chrome-ease),
+      top var(--mobile-chrome-dur) var(--mobile-chrome-ease);
+  }
+
+  .app-sticky-top::before {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--app-safe-top);
+    background-color: var(--color-bg);
+    z-index: 0;
+    pointer-events: none;
+    transition: height var(--mobile-chrome-dur) var(--mobile-chrome-ease);
+  }
+
+  .app-sticky-top > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .app-sticky-top .app-header,
+  .app-sticky-top .task-controls-wrap {
+    background-color: var(--color-bg);
+  }
+
+  .app-sticky-top .task-controls-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  /* Match expanded-search timing (base.css defines grid collapse for scroll + search). */
+  .app-sticky-top__header-slot {
+    transition: grid-template-rows var(--mobile-chrome-dur) var(--mobile-chrome-ease);
+  }
+
+  .app-sticky-top .app-header {
+    padding-left: var(--mobile-inline-gutter);
+    padding-right: var(--mobile-inline-gutter-right);
+  }
+
+  .app-sticky-top--mobile-search-open {
+    gap: 0;
+  }
+
+  /*
+   * Collapsed: tuck the toolbar closer to the safe-area band (still clears notch).
+   * --app-sticky-pinned-top must match ::before height so list content does not show through.
+   */
+  .app-sticky-top--chrome-collapsed:not(.app-sticky-top--mobile-search-open) {
+    --app-sticky-pinned-top: max(0.78rem, calc(env(safe-area-inset-top, 0px) + 0.16rem));
+    gap: 0;
+    padding-bottom: 0.5rem;
+    top: var(--app-sticky-pinned-top);
+  }
+
+  .app-sticky-top--chrome-collapsed:not(.app-sticky-top--mobile-search-open)::before {
+    height: var(--app-sticky-pinned-top);
+  }
+
+  .app-header {
+    padding-left: var(--mobile-inline-gutter);
+    padding-right: var(--mobile-inline-gutter-right);
+    /* Top safe area lives on #app once (avoids double-counting with calc above). */
+    padding-top: 0;
+    box-sizing: border-box;
+  }
+
+  .app-header h1 {
+    font-size: 1.35rem;
+  }
+
+  .app-header p {
+    font-size: 0.85rem;
+  }
+
+  .app-header-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .app-header-top {
+    position: relative;
+    padding-right: 3rem;
+  }
+
+  .app-header-brand {
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .govuk-logo__crest {
+    width: 48px;
+  }
+
+  /* Nudge menu trigger so it aligns visually with the filter control below. */
+  .app-header-top .btn-help {
+    position: fixed;
+    top: calc(var(--app-safe-top) + 0.15rem);
+    right: calc(var(--mobile-inline-gutter-right) + 0.5rem);
+    z-index: 1305;
+    margin-right: 0;
+  }
+
+  .app-header-top .btn-help--open {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Toolbar hamburger (collapsed): match filter control footprint in the actions cluster. */
+  .task-controls-mobile-actions .btn-help.btn-help--in-toolbar {
+    min-width: 2.35rem;
+    width: 2.35rem;
+    height: 2.25rem;
+    padding: 0.35rem;
+    box-sizing: border-box;
+  }
+
+  .app-header-theme {
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    margin-top: 0.25rem;
+    gap: 0.75rem;
+    align-items: center;
+    width: 100%;
+  }
+
+  .app-header-theme .control-label {
+    display: none;
+  }
+
+  .theme-switch,
+  .font-size-control {
+    gap: 0.25rem;
+  }
+
+  .card {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    padding-left: var(--mobile-inline-gutter);
+    padding-right: var(--mobile-inline-gutter-right);
+    border-width: 0;
+    border-radius: 0;
+    box-sizing: border-box;
+  }
+
+  .card-header {
+    margin-bottom: 0.5rem;
+  }
+
+  /*
+   * Controls row: full viewport width. Breakout so that even if #app is still
+   * constrained (e.g. wrong breakpoint or override), this row spans 100vw.
+   */
+  .task-controls-wrap {
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    flex-shrink: 0;
+    box-sizing: border-box;
+  }
+
+  .task-controls-wrap .task-controls {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    max-width: 100%;
+    padding-left: var(--mobile-inline-gutter);
+    padding-right: var(--mobile-inline-gutter-right);
+    box-sizing: border-box;
+  }
+
+  .task-controls-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .task-controls-left.task-controls-left--narrow {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Mobile toolbar: Create | flexible search field | Clear? | Filter; search expands over row on focus */
+  .task-controls-mobile-expandable {
+    position: relative;
+    width: 100%;
+    min-height: 2.35rem;
+    transition: min-height var(--mobile-chrome-dur) var(--mobile-chrome-ease);
+  }
+
+  .task-controls-mobile-expandable--open {
+    min-height: 6.35rem;
+  }
+
+  .task-controls-mobile-toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    position: relative;
+    min-height: 2.35rem;
+  }
+
+  .task-controls-mobile-toolbar .btn-create,
+  .task-controls-mobile-toolbar .btn-back-to-top {
+    flex-shrink: 0;
+  }
+
+  .task-controls-mobile-toolbar .btn-back-to-top {
+    min-width: 2.35rem;
+    width: 2.35rem;
+    height: 2.25rem;
+    padding: 0.35rem;
+    box-sizing: border-box;
+  }
+
+  .task-controls-mobile-search-slot {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    transition: box-shadow var(--mobile-chrome-dur) var(--mobile-chrome-ease);
+  }
+
+  .task-controls-mobile-search-slot .search-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .task-controls-mobile-expandable--open .task-controls-mobile-search-slot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    flex: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding-top: 0.28rem;
+    /* Horizontal inset comes from .task-controls padding (avoids padding animation jank). */
+    padding-left: 0;
+    padding-right: 0;
+    align-items: stretch;
+  }
+
+  .task-controls-mobile-expandable--open .task-controls-mobile-search-slot .search-wrapper {
+    align-self: flex-start;
+    width: 100%;
+  }
+
+  .task-controls-mobile-toolbar .btn-create,
+  .task-controls-mobile-toolbar .task-controls-mobile-actions {
+    transition:
+      opacity var(--mobile-chrome-dur) var(--mobile-chrome-ease),
+      visibility 0s linear 0s;
+  }
+
+  .task-controls-mobile-expandable--open .task-controls-mobile-toolbar .btn-create,
+  .task-controls-mobile-expandable--open .task-controls-mobile-toolbar .task-controls-mobile-actions {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    transition:
+      opacity calc(var(--mobile-chrome-dur) * 0.92) var(--mobile-chrome-ease),
+      visibility 0s linear var(--mobile-chrome-dur);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-sticky-top,
+    .app-sticky-top::before,
+    .app-sticky-top__header-slot,
+    .task-controls-mobile-toolbar .btn-create,
+    .task-controls-mobile-toolbar .task-controls-mobile-actions,
+    .task-controls-mobile-search-slot,
+    .task-controls-mobile-expandable {
+      transition-duration: 0.01ms !important;
+      transition-delay: 0s !important;
+    }
+  }
+
+  .task-controls-mobile-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .task-controls-mobile-actions .btn-filter {
+    min-width: 2.35rem;
+    width: 2.35rem;
+    height: 2.25rem;
+    padding: 0.35rem;
+    box-sizing: border-box;
+  }
+
+  /* Toolbar clear: never full-width (panel clear button uses .filters-panel .btn-clear-filters) */
+  .task-controls-wrap .btn-clear-filters--toolbar {
+    width: auto;
+    max-width: min(5.75rem, 28vw);
+    min-width: 0;
+    min-height: 2.25rem;
+    padding: 0.42rem 0.48rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    font-weight: 600;
+  }
+
+  .task-controls-wrap .btn-clear-filters--toolbar .clear-filters-label--full {
+    display: none;
+  }
+
+  .task-controls-wrap .btn-clear-filters--toolbar .clear-filters-label--short {
+    display: inline;
+  }
+
+  .btn-create {
+    flex-shrink: 0;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.9rem;
+  }
+
+  .search-toggle-btn {
+    display: none;
+  }
+
+  .search-wrapper--expanded {
+    display: flex;
+    max-width: 100%;
+  }
+
+  .search-wrapper--fullwidth {
+    width: 100%;
+    max-width: 100%;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .search-wrapper--expanded .search-input,
+  .search-wrapper--fullwidth .search-input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* Inline search bar between Create and filter controls */
+  .search-wrapper--mobile-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.45rem;
+    min-height: 2.25rem;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-bg);
+    box-sizing: border-box;
+  }
+
+  .search-wrapper--mobile-inline .search-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+
+  .search-input--mobile-inline {
+    font-size: 0.88rem;
+    line-height: 1.35;
+    padding: 0.28rem 0;
+    min-height: 1.85rem;
+    min-width: 0;
+  }
+
+  /* Expanded search: large light type, airy line height — clearly “active” but refined */
+  .search-wrapper--mobile-expanded {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.42rem 0.35rem 0.42rem;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .search-wrapper--mobile-expanded .search-icon {
+    width: 1.85rem;
+    height: 1.85rem;
+    flex-shrink: 0;
+    opacity: 0.72;
+    align-self: center;
+  }
+
+  /* No separate clear control on mobile expanded; keep decoration minimal */
+  .search-input--mobile-expanded::-webkit-search-cancel-button,
+  .search-input--mobile-expanded::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+  }
+
+  .search-input--mobile-expanded {
+    font-size: 3.5rem;
+    line-height: 1.34;
+    padding: 0.28rem 0 0.3rem;
+    min-height: 4rem;
+    font-weight: 300;
+    letter-spacing: 0.01em;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Expanded state is obvious (layout + caret); drop global input/search focus rings */
+  .search-wrapper--mobile-expanded .search-input--mobile-expanded:focus,
+  .search-wrapper--mobile-expanded .search-input--mobile-expanded:focus-visible {
+    outline: none;
+    border: none;
+    box-shadow: none;
+    background-color: transparent;
+  }
+
+  .task-controls-right {
+    flex-shrink: 0;
+  }
+
+  /* Filters: vertical list, no overflow */
+  .filters-panel {
+    margin-top: 0.5rem;
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+    padding-left: var(--mobile-inline-gutter);
+    padding-right: var(--mobile-inline-gutter-right);
+    border-top: 1px solid var(--color-border);
+    background-color: var(--color-bg-subtle);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .filter-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    width: 100%;
+    padding-left: 0.25rem;
+  }
+
+  .filter-controls > label,
+  .filter-controls .filter-applied-tags-row,
+  .filter-controls .date-range,
+  .filter-controls .sort-controls {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter-controls label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .filter-controls select,
+  .filter-controls input,
+  .filter-due-input {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .date-range {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .date-range label {
+    width: 100%;
+  }
+
+  .sort-controls {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .filters-panel .btn-clear-filters {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Content */
+  .tasks-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .task {
+    padding-top: 0.78rem;
+    padding-bottom: 0.78rem;
+    padding-left: calc(var(--mobile-inline-gutter) - 0.05rem);
+    padding-right: calc(var(--mobile-inline-gutter-right) - 0.05rem);
+    border-radius: 0;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow:
+      0 8px 16px rgba(15, 23, 42, 0.06),
+      0 1px 3px rgba(15, 23, 42, 0.08);
+  }
+
+  .task-header h3 {
+    font-size: 0.95rem;
+  }
+
+  .meta {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-add-row {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.5rem;
+  }
+
+  .quick-add-title,
+  .quick-add-picker-wrap {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .task-table {
+    font-size: 0.85rem;
+  }
+
+  .table-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .task-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  :root[data-density='compact'] .task .task-actions {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 0.35rem;
+  }
+
+  :root[data-density='compact'] .task .task-actions .btn-icon-compact {
+    flex: 1 1 50%;
+    justify-content: center;
+  }
+
+  .form-actions {
+    justify-content: stretch;
+  }
+
+  .form-actions button {
+    width: 100%;
+  }
+
+  /* Reader overlay actions stay horizontal on mobile. */
+  .task-readonly-form .form-actions .task-actions {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .task-readonly-form .form-actions .btn-icon-compact {
+    flex: 1 1 50%;
+    width: auto;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .kanban {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics-strip {
+    padding: 0.4rem 0;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .health-banner {
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+}
+
+@media (min-width: 769px) {
+  /*
+   * Desktop / tablet: same sticky chrome as mobile — header, toolbar, and (when open)
+   * the filters panel stay visible while scrolling the task area.
+   * align-self + width: avoid flex stretch quirks with position: sticky in column layout.
+   */
+  /*
+   * ::before masks the viewport band above the sticky block (same height as #app padding-top)
+   * so task content does not scroll visibly through that gap (matches narrow-viewport sticky).
+   */
+  .app > .app-sticky-top::before {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--app-chrome-top-offset, 2.5rem);
+    background-color: var(--color-bg);
+    background-image: linear-gradient(var(--color-bg), var(--color-bg));
+    z-index: 0;
+    pointer-events: none;
+    transition: height var(--sticky-chrome-collapse-dur) var(--sticky-chrome-collapse-ease);
+  }
+
+  .app > .app-sticky-top {
+    align-self: flex-start;
+    width: 100%;
+    min-width: 0;
+    position: sticky;
+    top: var(--app-chrome-top-offset, 2.5rem);
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    transition:
+      gap var(--sticky-chrome-collapse-dur) var(--sticky-chrome-collapse-ease),
+      padding-bottom var(--sticky-chrome-collapse-dur) var(--sticky-chrome-collapse-ease),
+      top var(--sticky-chrome-collapse-dur) var(--sticky-chrome-collapse-ease);
+    padding-bottom: 0.65rem;
+    box-sizing: border-box;
+    background-color: var(--color-bg);
+    background-image: linear-gradient(var(--color-bg), var(--color-bg));
+    /* Full-width separator: border on the box is clipped to #app; line spans viewport. */
+    border-bottom: none;
+  }
+
+  .app > .app-sticky-top > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .app > .app-sticky-top::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: 1px;
+    transform: translateX(-50%);
+    background-color: var(--color-border);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .app-sticky-top .app-header,
+  .app-sticky-top .task-controls-wrap {
+    background-color: var(--color-bg);
+  }
+
+  .app-sticky-top .filters-panel {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .app > .app-sticky-top--chrome-collapsed {
+    --app-sticky-pinned-top: 0.85rem;
+    gap: 0;
+    padding-bottom: 0.52rem;
+    top: var(--app-sticky-pinned-top);
+  }
+
+  .app > .app-sticky-top--chrome-collapsed::before {
+    height: var(--app-sticky-pinned-top);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app > .app-sticky-top,
+    .app > .app-sticky-top::before {
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

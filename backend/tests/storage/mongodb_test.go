@@ -96,7 +96,7 @@ func TestMongoStore_ListTasks(t *testing.T) {
 		}
 	}
 
-	all, err := store.ListTasks(ctx)
+	all, err := store.ListTasks(ctx, storage.ListOptions{})
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
